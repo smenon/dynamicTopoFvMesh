@@ -50,13 +50,14 @@ namespace Foam
 //- Store gradients prior to mesh reset
 void topoMapper::storeGradients() const
 {
-    storeGradients<scalar>(sGrads_);
-    storeGradients<vector>(vGrads_);
+    // Go in order of highest to lowest rank,
+    // to avoid double storage
+    storeGradients<vector>(gradTable_, vGradPtrs_);
+    storeGradients<scalar>(gradTable_, sGradPtrs_);
 
     if (fvMesh::debug)
     {
-        Info<< "Registered volScalarFields: " << scalarGrads() << endl;
-        Info<< "Registered volVectorFields: " << vectorGrads() << endl;
+        Info<< "Registered gradients: " << gradientTable() << endl;
     }
 }
 
@@ -108,7 +109,7 @@ void topoMapper::storeGeometry() const
                 mesh_,
                 IOobject::NO_READ,
                 IOobject::NO_WRITE,
-                false
+                true
             ),
             mesh_,
             dimLength,
@@ -357,17 +358,10 @@ const vectorField& topoMapper::patchCentres(const label i) const
 }
 
 
-//- Return names of stored scalar gradients
-const wordList topoMapper::scalarGrads() const
+//- Return names of stored gradients
+const wordList topoMapper::gradientTable() const
 {
-    return sGrads_.toc();
-}
-
-
-//- Return names of stored vector gradients
-const wordList topoMapper::vectorGrads() const
-{
-    return vGrads_.toc();
+    return gradTable_.toc();
 }
 
 
@@ -375,7 +369,7 @@ const wordList topoMapper::vectorGrads() const
 template <>
 volVectorField& topoMapper::gradient(const word& name) const
 {
-    if (!sGrads_.found(name))
+    if (!gradTable_.found(name))
     {
         FatalErrorIn
         (
@@ -385,7 +379,7 @@ volVectorField& topoMapper::gradient(const word& name) const
           << abort(FatalError);
     }
 
-    return sGrads_[name]();
+    return sGradPtrs_[gradTable_[name].second()];
 }
 
 
@@ -393,7 +387,7 @@ volVectorField& topoMapper::gradient(const word& name) const
 template <>
 volTensorField& topoMapper::gradient(const word& name) const
 {
-    if (!vGrads_.found(name))
+    if (!gradTable_.found(name))
     {
         FatalErrorIn
         (
@@ -403,7 +397,28 @@ volTensorField& topoMapper::gradient(const word& name) const
           << abort(FatalError);
     }
 
-    return vGrads_[name]();
+    return vGradPtrs_[gradTable_[name].second()];
+}
+
+
+//- Deregister gradient fields and centres,
+//  but retain for mapping
+void topoMapper::deregisterMeshInformation() const
+{
+    // Check out scalar gradients
+    forAll(sGradPtrs_, fieldI)
+    {
+        mesh_.objectRegistry::checkOut(sGradPtrs_[fieldI]);
+    }
+
+    // Check out vector gradients
+    forAll(vGradPtrs_, fieldI)
+    {
+        mesh_.objectRegistry::checkOut(vGradPtrs_[fieldI]);
+    }
+
+    // Check out cell centres
+    mesh_.objectRegistry::checkOut(*cellCentresPtr_);
 }
 
 
@@ -496,9 +511,12 @@ void topoMapper::clear() const
     surfaceMap_.clear();
     boundaryMap_.clear();
 
+    // Clear index maps
+    gradTable_.clear();
+
     // Clear stored gradients
-    sGrads_.clear();
-    vGrads_.clear();
+    sGradPtrs_.clear();
+    vGradPtrs_.clear();
 
     // Wipe out geomtry information
     deleteDemandDrivenData(cellCentresPtr_);

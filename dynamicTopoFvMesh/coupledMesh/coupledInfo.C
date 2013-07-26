@@ -206,78 +206,17 @@ label coupledInfo::slaveFaceZone() const
 }
 
 
-// Set subMesh centres
-void coupledInfo::setCentres(PtrList<volVectorField>& centres) const
-{
-    // Fetch reference to subMesh
-    const dynamicTopoFvMesh& mesh = subMesh();
-
-    // Set size
-    centres.setSize(1);
-
-    vectorField Cv(mesh.cellCentres());
-    vectorField Cf(mesh.faceCentres());
-
-    // Create and map the patch field values
-    label nPatches = mesh.boundary().size();
-
-    // Create field parts
-    PtrList<fvPatchField<vector> > volCentrePatches(nPatches);
-
-    // Over-ride and set all patches to fixedValue
-    for (label patchI = 0; patchI < nPatches; patchI++)
-    {
-        volCentrePatches.set
-        (
-            patchI,
-            new fixedValueFvPatchField<vector>
-            (
-                mesh.boundary()[patchI],
-                DimensionedField<vector, volMesh>::null()
-            )
-        );
-
-        // Slice field to patch (forced assignment)
-        volCentrePatches[patchI] ==
-        (
-            mesh.boundaryMesh()[patchI].patchSlice(Cf)
-        );
-    }
-
-    // Set the cell-centres pointer.
-    centres.set
-    (
-        0,
-        new volVectorField
-        (
-            IOobject
-            (
-                "cellCentres",
-                mesh.time().timeName(),
-                mesh,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE,
-                false
-            ),
-            mesh,
-            dimLength,
-            SubField<vector>(Cv, mesh.nCells()),
-            volCentrePatches
-        )
-    );
-}
-
-
 // Subset geometric field
-template<class Type, template<class> class PatchField, class Mesh>
-tmp<GeometricField<Type, PatchField, Mesh> >
-coupledInfo::subSetField(const GeometricField<Type, PatchField, Mesh>& f) const
+template<class GeomField>
+tmp<GeomField>
+coupledInfo::subSetField(const GeomField& f) const
 {
-    typedef PatchField<Type> PatchFieldType;
-    typedef GeometricField<Type, PatchField, Mesh> GeomFieldType;
+    typedef typename GeomField::InternalField InternalField;
+    typedef typename GeomField::PatchFieldType PatchFieldType;
+    typedef typename GeomField::DimensionedInternalField DimInternalField;
 
     // Create and map the internal-field values
-    Field<Type> internalField(f.internalField(), map().cellMap());
+    InternalField internalField(f.internalField(), map().cellMap());
 
     // Create and map the patch field values
     label nPatches = subMesh().boundary().size();
@@ -300,7 +239,7 @@ coupledInfo::subSetField(const GeometricField<Type, PatchField, Mesh>& f) const
                 (
                     emptyType,
                     subMesh().boundary()[patchI],
-                    DimensionedField<Type, Mesh>::null()
+                    DimInternalField::null()
                 )
             );
         }
@@ -314,7 +253,7 @@ coupledInfo::subSetField(const GeometricField<Type, PatchField, Mesh>& f) const
                 (
                     processorType,
                     subMesh().boundary()[patchI],
-                    DimensionedField<Type, Mesh>::null()
+                    DimInternalField::null()
                 )
             );
         }
@@ -327,7 +266,7 @@ coupledInfo::subSetField(const GeometricField<Type, PatchField, Mesh>& f) const
                 (
                     f.boundaryField()[patchI],
                     subMesh().boundary()[patchI],
-                    DimensionedField<Type, Mesh>::null(),
+                    DimInternalField::null(),
                     subMeshMapper(*this, patchI)
                 )
             );
@@ -335,9 +274,9 @@ coupledInfo::subSetField(const GeometricField<Type, PatchField, Mesh>& f) const
     }
 
     // Create new field from pieces
-    tmp<GeomFieldType> subFld
+    tmp<GeomField> subFld
     (
-        new GeomFieldType
+        new GeomField
         (
             IOobject
             (
@@ -553,19 +492,6 @@ void coupledInfo::resizeMap
     // Map physical boundary-fields
     forAll(boundaryMapper, patchI)
     {
-        if
-        (
-            field.boundaryField()[patchI].empty()
-         && boundaryMapper[patchI].directAddressing().size()
-        )
-        {
-            // Artificially set the size prior to remap,
-            // since fvPatchField::autoMap appears to be
-            // assigning the field to patchInternalField
-            // (which is empty, since the patch is zero-sized)
-            field.boundaryField()[patchI].setSize(1);
-        }
-
         // autoMap the patchField
         field.boundaryField()[patchI].autoMap(boundaryMapper[patchI]);
 
@@ -625,45 +551,57 @@ void coupledInfo::resizeMap
 
 
 // Resize boundaryFields for all fields in the registry
-template<class Type, template<class> class PatchField, class Mesh>
+template<class GeomField>
 void coupledInfo::resizeBoundaries
 (
-    const wordList& names,
-    const label nOldPatches,
     const objectRegistry& mesh,
-    const fvBoundaryMesh& boundary,
-    const List<PtrList<GeometricField<Type, PatchField, Mesh> > >& srcFields
+    const fvBoundaryMesh& boundary
 )
 {
-    typedef GeometricField<Type, PatchField, Mesh> GeomFieldType;
-    typedef typename GeomFieldType::GeometricBoundaryField GeomBoundaryType;
+    typedef typename GeomField::PatchFieldType PatchFieldType;
+    typedef typename GeomField::GeometricBoundaryField GeomBoundaryType;
 
-    forAll(names, indexI)
+    HashTable<const GeomField*> fields(mesh.lookupClass<GeomField>());
+
+    forAllIter(typename HashTable<const GeomField*>, fields, fIter)
     {
         // Fetch field from registry
-        GeomFieldType& field =
-        (
-            const_cast<GeomFieldType&>
-            (
-                mesh.lookupObject<GeomFieldType>(names[indexI])
-            )
-        );
+        GeomField& field = const_cast<GeomField&>(*fIter());
 
         GeomBoundaryType& bf = field.boundaryField();
 
         // Resize boundary
         label nPatches = boundary.size();
+        label nOldPatches = field.boundaryField().size();
 
-        // Existing fields are simply cloned here
-        bf.setSize(nPatches);
+        // Create a new list of boundaries
+        PtrList<PatchFieldType> newbf(nPatches);
+
+        // Existing fields are mapped with new fvBoundaryMesh references
+        for (label patchI = 0; patchI < nOldPatches; patchI++)
+        {
+            label oldPatchSize = bf[patchI].size();
+
+            newbf.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    bf[patchI],
+                    boundary[patchI],
+                    field,
+                    subMeshMapper(oldPatchSize, identity(oldPatchSize))
+                )
+            );
+        }
 
         // Size up new patches
         for (label patchI = nOldPatches; patchI < nPatches; patchI++)
         {
-            bf.set
+            newbf.set
             (
                 patchI,
-                PatchField<Type>::New
+                PatchFieldType::New
                 (
                     boundary[patchI].type(),
                     boundary[patchI],
@@ -671,6 +609,9 @@ void coupledInfo::resizeBoundaries
                 )
             );
         }
+
+        // Transfer contents with new patches
+        bf.transfer(newbf);
     }
 }
 

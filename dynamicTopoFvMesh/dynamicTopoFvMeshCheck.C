@@ -717,7 +717,7 @@ void dynamicTopoFvMesh::writeEdgeConnectivity
     {
         label pIdx = whichPatch(eFaces[faceI]);
 
-        word pName((pIdx < 0) ?	"Internal" : boundaryMesh()[pIdx].name());
+        word pName((pIdx < 0) ? "Internal" : boundaryMesh()[pIdx].name());
 
         Pout<< " Face: " << eFaces[faceI]
             << " :: " << faces_[eFaces[faceI]]

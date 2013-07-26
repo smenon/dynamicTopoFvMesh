@@ -1072,8 +1072,7 @@ class dynamicTopoFvMesh
         (
             wordList& fieldTypes,
             List<wordList>& fieldNames,
-            List<List<char> >& recvBuffer,
-            label nOldPatches
+            List<List<char> >& recvBuffer
         );
 
         // Initialize coupled boundary ordering
