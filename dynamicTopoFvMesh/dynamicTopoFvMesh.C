@@ -1081,6 +1081,123 @@ void dynamicTopoFvMesh::removePoint
 }
 
 
+// Return zone index for a specified entity
+label dynamicTopoFvMesh::getZoneIndex
+(
+    const label index,
+    const label eType
+) const
+{
+    switch (eType)
+    {
+        // Point zone
+        case 0:
+        {
+            if (index < nOldPoints_)
+            {
+                // Check zone ID
+                const pointZoneMesh& pz = pointZones();
+
+                forAll(pz, zoneI)
+                {
+                    if (pz[zoneI].whichPoint(index) > -1)
+                    {
+                        return pz[zoneI].index();
+                    }
+                }
+            }
+            else
+            {
+                Map<label>::const_iterator it = addedPointZones_.find(index);
+
+                if (it != addedPointZones_.end())
+                {
+                    return it();
+                }
+            }
+
+            break;
+        }
+
+        // Face zone
+        case 2:
+        {
+            if (index < nOldFaces_)
+            {
+                // Check zone ID
+                const faceZoneMesh& fz = faceZones();
+
+                forAll(fz, zoneI)
+                {
+                    if (fz[zoneI].whichFace(index) > -1)
+                    {
+                        return fz[zoneI].index();
+                    }
+                }
+            }
+            else
+            {
+                Map<label>::const_iterator it = addedFaceZones_.find(index);
+
+                if (it != addedFaceZones_.end())
+                {
+                    return it();
+                }
+            }
+
+            break;
+        }
+
+        // Cell zone
+        case 3:
+        {
+            if (index < nOldCells_)
+            {
+                // Check zone ID
+                const cellZoneMesh& cz = cellZones();
+
+                forAll(cz, zoneI)
+                {
+                    if (cz[zoneI].whichCell(index) > -1)
+                    {
+                        return cz[zoneI].index();
+                    }
+                }
+            }
+            else
+            {
+                Map<label>::const_iterator it = addedCellZones_.find(index);
+
+                if (it != addedCellZones_.end())
+                {
+                    return it();
+                }
+            }
+
+            break;
+        }
+
+        default:
+        {
+            FatalErrorIn
+            (
+                "\n"
+                "label dynamicTopoFvMesh::getZoneIndex\n"
+                "(\n"
+                "    const label index,\n"
+                "    const label eType\n"
+                ")\n"
+            )
+                << " Unknown entity type: " << eType << nl
+                << " Index: " << index
+                << abort(FatalError);
+        }
+    }
+
+    return -1;
+}
+
+
 // Utility method to build vertexHull for an edge [3D].
 // Assumes that edgeFaces information is consistent.
 void dynamicTopoFvMesh::buildVertexHull
@@ -1484,20 +1601,152 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
     forAll(layeringPatches, wordI)
     {
         word pName = layeringPatches[wordI];
-        label patchID = boundary.findPatchID(pName);
 
-        // If this patch has no faces, move on
-        if (boundary[patchID].empty())
+        label patchID = boundary.findPatchID(pName);
+        label zoneID = faceZones().findZoneID(pName);
+
+        if (zoneID == -1 && patchID == -1)
         {
-            continue;
+            FatalErrorIn
+            (
+                "void dynamicTopoFvMesh::handleLayerAdditionRemoval()"
+            )
+                << " No patch or zone named: " << pName
+                << abort(FatalError);
         }
 
-        // Use first face to determine layer thickness
-        scalar magSf = mag(boundary[patchID].faceAreas()[0]);
-        scalar Vc = cellVolumes()[boundary[patchID].faceCells()[0]];
+        if (zoneID > -1 && patchID > -1)
+        {
+            FatalErrorIn
+            (
+                "void dynamicTopoFvMesh::handleLayerAdditionRemoval()"
+            )
+                << " Patch / zone duplicate: " << pName
+                << abort(FatalError);
+        }
+
+        DynamicList<label> patchFaces, patchCells;
+
+        if (zoneID > -1)
+        {
+            // Look for orientation vector
+            vector orient
+            (
+                layeringDict.subDict(pName).lookup("orientationVector")
+            );
+
+            const faceZone& fz = faceZones()[zoneID];
+
+            patchFaces.setCapacity(fz.size());
+            patchCells.setCapacity(fz.size());
+
+            label cellIndex = -1;
+
+            forAll(fz, faceI)
+            {
+                if (reverseFaceMap_[fz[faceI]] == -1)
+                {
+                    continue;
+                }
+
+                const face& checkFace = faces_[fz[faceI]];
+
+                vector fN = checkFace.normal(points_);
+
+                if ((fN & orient) > 0.0)
+                {
+                    cellIndex = owner_[fz[faceI]];
+                }
+                else
+                {
+                    cellIndex = neighbour_[fz[faceI]];
+                }
+
+                patchFaces.append(fz[faceI]);
+                patchCells.append(cellIndex);
+            }
+
+            forAllConstIter(Map<label>, addedFaceZones_, fIter)
+            {
+                if (fIter() == zoneID)
+                {
+                    const face& checkFace = faces_[fIter.key()];
+
+                    vector fN = checkFace.normal(points_);
+
+                    if ((fN & orient) > 0.0)
+                    {
+                        cellIndex = owner_[fIter.key()];
+                    }
+                    else
+                    {
+                        cellIndex = neighbour_[fIter.key()];
+                    }
+
+                    patchFaces.append(fIter.key());
+                    patchCells.append(cellIndex);
+                }
+            }
+        }
+        else
+        {
+            const polyPatch& fp = boundary[patchID];
+
+            patchFaces.setCapacity(fp.size());
+            patchCells.setCapacity(fp.size());
+
+            forAll(fp, faceI)
+            {
+                if (reverseFaceMap_[faceI + fp.start()] == -1)
+                {
+                    continue;
+                }
+
+                patchFaces.append(faceI + fp.start());
+                patchCells.append(owner_[faceI + fp.start()]);
+            }
+
+            forAllConstIter(Map<label>, addedFacePatches_, fIter)
+            {
+                if (fIter() == patchID)
+                {
+                    patchFaces.append(fIter.key());
+                    patchCells.append(owner_[fIter.key()]);
+                }
+            }
+        }
+
+        // Loop through all faces / cells
+        // and accumulate necessary information
+        scalar cellVolume = 0.0;
+        vector cellCentre(vector::zero);
+        scalarField fieldVc(patchFaces.size());
+        scalarField fieldMagSf(patchFaces.size());
+
+        forAll(patchFaces, faceI)
+        {
+            const face& checkFace = faces_[patchFaces[faceI]];
+
+            meshOps::cellCentreAndVolume
+            (
+                patchCells[faceI],
+                points_,
+                faces_,
+                cells_,
+                owner_,
+                cellCentre,
+                cellVolume
+            );
+
+            fieldVc[faceI] = cellVolume;
+            fieldMagSf[faceI] = Foam::mag(checkFace.normal(points_));
+        }
 
         // Define thickness
-        scalar thickness = (Vc / (magSf + VSMALL));
+        scalar thickness = Foam::min(fieldVc / (fieldMagSf + VSMALL));
+
+        // Reduce across processors
+        reduce(thickness, minOp<scalar>());
 
         // Fetch min / max thickness
         scalar minThickness =
@@ -1513,8 +1762,6 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
         if (debug)
         {
             Pout<< " Patch: " << pName << nl
-                << " Face area: " << magSf << nl
-                << " Cell volume: " << Vc << nl
                 << " Layer thickness: " << thickness << nl
                 << " Min thickness: " << minThickness << nl
                 << " Max thickness: " << maxThickness << nl
@@ -1524,13 +1771,13 @@ void dynamicTopoFvMesh::handleLayerAdditionRemoval()
         if (thickness > maxThickness)
         {
             // Add cell layer above patch
-            addCellLayer(patchID);
+            addCellLayer(patchFaces, patchCells);
         }
         else
         if (thickness < minThickness)
         {
             // Remove cell layer above patch
-            removeCellLayer(patchID);
+            removeCellLayer(patchFaces, patchCells);
         }
     }
 }

@@ -271,7 +271,6 @@ inline label tetApexPoint
 
 
 // Given a cell index, find the centroid / volume of a cell.
-//  - If checking is enabled, return whether the cell is closed
 inline void cellCentreAndVolume
 (
     const label cIndex,

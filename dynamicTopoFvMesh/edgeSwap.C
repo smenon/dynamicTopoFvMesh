@@ -2104,10 +2104,27 @@ scalar dynamicTopoFvMesh::computeMinQuality
         return minQuality;
     }
 
-    // Ensure that edge is surrounded by triangles
+    // Ensure that edge is surrounded by tetrahedra
     forAll(edgeFaces, faceI)
     {
-        if (faces_[edgeFaces[faceI]].size() != 3)
+        const label& faceIndex = edgeFaces[faceI];
+        const face& faceToCheck = faces_[faceIndex];
+
+        if (faceToCheck.size() != 3)
+        {
+            return minQuality;
+        }
+
+        // Ensure tet-cells
+        const label& faceOwn = owner_[faceIndex];
+        const label& faceNei = neighbour_[faceIndex];
+
+        if (cells_[faceOwn].size() != 4)
+        {
+            return minQuality;
+        }
+
+        if ((faceNei > -1) && (cells_[faceNei].size() != 4))
         {
             return minQuality;
         }
@@ -2423,6 +2440,27 @@ const changeMap dynamicTopoFvMesh::swap23
             << abort(FatalError);
     }
 
+    // Check if cell-zones need to be specified.
+    label newCellZone = -1;
+
+    forAll(cellsForRemoval, cellI)
+    {
+        label zId = getZoneIndex(cellsForRemoval[cellI], 3);
+
+        if (zId > -1 && newCellZone == -1)
+        {
+            newCellZone = zId;
+        }
+
+        if (newCellZone != zId)
+        {
+            Pout<< " Zone IDs differ: " << nl
+                << "  zId: " << zId << nl
+                << "  newCellZone: " << newCellZone << nl
+                << abort(FatalError);
+        }
+    }
+
     // Add three new cells to the end of the cell list
     FixedList<label,3> newCellIndex(-1);
     FixedList<cell, 3> newTetCell(cell(4));
@@ -2444,7 +2482,15 @@ const changeMap dynamicTopoFvMesh::swap23
         }
 
         // Insert the cell
-        newCellIndex[cellI] = insertCell(newTetCell[cellI], avgScale);
+        newCellIndex[cellI] =
+        (
+            insertCell
+            (
+                newTetCell[cellI],
+                avgScale,
+                newCellZone
+            )
+        );
 
         // Add this cell to the map.
         map.addCell(newCellIndex[cellI]);
@@ -3041,6 +3087,27 @@ const changeMap dynamicTopoFvMesh::swap32
         }
     }
 
+    // Check if cell-zones need to be specified.
+    label newCellZone = -1;
+
+    forAll(cellRemovalList, cellI)
+    {
+        label zId = getZoneIndex(cellRemovalList[cellI], 3);
+
+        if (zId > -1 && newCellZone == -1)
+        {
+            newCellZone = zId;
+        }
+
+        if (newCellZone != zId)
+        {
+            Pout<< " Zone IDs differ: " << nl
+                << "  zId: " << zId << nl
+                << "  newCellZone: " << newCellZone << nl
+                << abort(FatalError);
+        }
+    }
+
     // Add two new cells to the end of the cell list
     FixedList<label,2> newCellIndex(-1);
     FixedList<cell, 2> newTetCell(cell(4));
@@ -3060,7 +3127,15 @@ const changeMap dynamicTopoFvMesh::swap32
         }
 
         // Insert the cell
-        newCellIndex[cellI] = insertCell(newTetCell[cellI], avgScale);
+        newCellIndex[cellI] =
+        (
+            insertCell
+            (
+                newTetCell[cellI],
+                avgScale,
+                newCellZone
+            )
+        );
 
         // Add this cell to the map.
         map.addCell(newCellIndex[cellI]);

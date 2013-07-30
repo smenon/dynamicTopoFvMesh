@@ -3007,12 +3007,16 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             // Create a new cell. Add it for now, but update later.
             cell newCell(4);
 
+            // Assign same zone as parent cell
+            label newCellZone = getZoneIndex(cellHull[indexI], 3);
+
             addedCellIndices[indexI] =
             (
                 insertCell
                 (
                     newCell,
-                    lengthScale_[cellHull[indexI]]
+                    lengthScale_[cellHull[indexI]],
+                    newCellZone
                 )
             );
 
@@ -4861,7 +4865,8 @@ void dynamicTopoFvMesh::sliceMesh
 // Add cell layer above specified patch
 const changeMap dynamicTopoFvMesh::addCellLayer
 (
-    const label patchID
+    const DynamicList<label>& patchFaces,
+    const DynamicList<label>& patchCells
 )
 {
     changeMap map;
@@ -4872,24 +4877,12 @@ const changeMap dynamicTopoFvMesh::addCellLayer
     Map<label> addedHFaces, addedVFaces, currentVFaces;
     Map<labelPair> addedCells;
 
-    // Allocate a list of patch faces
-    DynamicList<label> patchFaces(patchSizes_[patchID]);
-
     // Loop through all patch faces and create a cell for each
-    for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
+    forAll(patchFaces, faceI)
     {
-        label pIndex = whichPatch(faceI);
-
-        if (pIndex != patchID)
-        {
-            continue;
-        }
-
-        // Add face to the list
-        patchFaces.append(faceI);
-
         // Add a new cell
-        label cIndex = owner_[faceI];
+        label cIndex = patchCells[faceI];
+
         scalar newLengthScale = -1.0;
         const cell& ownCell = cells_[cIndex];
 
@@ -4898,12 +4891,16 @@ const changeMap dynamicTopoFvMesh::addCellLayer
             newLengthScale = lengthScale_[cIndex];
         }
 
+        // Assign same zone as parent cell
+        label newCellZone = getZoneIndex(cIndex, 3);
+
         label newCellIndex =
         (
             insertCell
             (
                 cell(ownCell.size()),
-                newLengthScale
+                newLengthScale,
+                newCellZone
             )
         );
 
@@ -4917,7 +4914,7 @@ const changeMap dynamicTopoFvMesh::addCellLayer
     forAll(patchFaces, indexI)
     {
         label faceI = patchFaces[indexI];
-        label cIndex = owner_[faceI];
+        label cIndex = patchCells[indexI];
 
         // Fetch appropriate face / cell
         //  - Make copies, since holding references
@@ -4937,8 +4934,12 @@ const changeMap dynamicTopoFvMesh::addCellLayer
             // Something's wrong here.
             FatalErrorIn
             (
-                "const changeMap dynamicTopoFvMesh::addCellLayer"
-                "(const label patchID)"
+                "\n\n"
+                "const changeMap dynamicTopoFvMesh::addCellLayer\n"
+                "(\n"
+                "    const DynamicList<label>& patchFaces,\n"
+                "    const DynamicList<label>& patchCells\n"
+                ")\n"
             )
                 << " Face: " << faceI << " :: " << bFace << nl
                 << " has no opposing face in cell: "
@@ -5021,8 +5022,12 @@ const changeMap dynamicTopoFvMesh::addCellLayer
             {
                 FatalErrorIn
                 (
-                    "const changeMap dynamicTopoFvMesh::addCellLayer"
-                    "(const label patchID)"
+                    "\n\n"
+                    "const changeMap dynamicTopoFvMesh::addCellLayer\n"
+                    "(\n"
+                    "    const DynamicList<label>& patchFaces,\n"
+                    "    const DynamicList<label>& patchCells\n"
+                    ")\n"
                 )
                     << " Could not find comparison edge: " << cEdge
                     << " for edge: " << bEdge
@@ -5082,8 +5087,12 @@ const changeMap dynamicTopoFvMesh::addCellLayer
             {
                 FatalErrorIn
                 (
-                    "const changeMap dynamicTopoFvMesh::addCellLayer"
-                    "(const label patchID)"
+                    "\n\n"
+                    "const changeMap dynamicTopoFvMesh::addCellLayer\n"
+                    "(\n"
+                    "    const DynamicList<label>& patchFaces,\n"
+                    "    const DynamicList<label>& patchCells\n"
+                    ")\n"
                 )
                     << " Could not find an appropriate vertical face"
                     << " containing edges: " << oeIndex

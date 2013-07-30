@@ -1665,15 +1665,54 @@ void mesquiteMotionSolver::initArrays()
 
         forAll(fixZones, zoneI)
         {
-            label zoneID = mesh().pointZones().findZoneID(fixZones[zoneI]);
+            // Check point zones
+            label pZoneID = mesh().pointZones().findZoneID(fixZones[zoneI]);
 
-            if (zoneID > -1)
+            if (pZoneID > -1)
             {
-                const pointZone& pLabels = mesh().pointZones()[zoneID];
+                const pointZone& pLabels = mesh().pointZones()[pZoneID];
 
                 forAll(pLabels, pointI)
                 {
                     fixFlags_[pLabels[pointI]] = 1;
+                }
+            }
+
+            // Check face zones
+            label fZoneID = mesh().faceZones().findZoneID(fixZones[zoneI]);
+
+            if (fZoneID > -1)
+            {
+                const faceZone& fLabels = mesh().faceZones()[fZoneID];
+
+                forAll(fLabels, faceI)
+                {
+                    const face& zoneFace = mesh().faces()[fLabels[faceI]];
+
+                    forAll(zoneFace, pointI)
+                    {
+                        fixFlags_[zoneFace[pointI]] = 1;
+                    }
+                }
+            }
+
+            // Check cell zones
+            label cZoneID = mesh().cellZones().findZoneID(fixZones[zoneI]);
+
+            if (cZoneID > -1)
+            {
+                const cellZone& cLabels = mesh().cellZones()[cZoneID];
+
+                forAll(cLabels, cellI)
+                {
+                    const cell& zoneCell = mesh().cells()[cLabels[cellI]];
+
+                    labelList pLabels = zoneCell.labels(mesh().faces());
+
+                    forAll(pLabels, pointI)
+                    {
+                        fixFlags_[pLabels[pointI]] = 1;
+                    }
                 }
             }
         }

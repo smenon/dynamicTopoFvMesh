@@ -7288,7 +7288,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 // Remove cell layer above specified patch
 const changeMap dynamicTopoFvMesh::removeCellLayer
 (
-    const label patchID
+    const DynamicList<label>& patchFaces,
+    const DynamicList<label>& patchCells
 )
 {
     changeMap map;
@@ -7296,41 +7297,35 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
     labelHashSet edgesToRemove, facesToRemove;
     Map<labelPair> pointsToRemove, edgesToKeep;
 
-    DynamicList<label> patchFaces(patchSizes_[patchID]);
-    DynamicList<labelPair> cellsToRemove(patchSizes_[patchID]);
-    DynamicList<labelPair> hFacesToRemove(patchSizes_[patchID]);
+    DynamicList<labelPair> cellsToRemove(patchFaces.size());
+    DynamicList<labelPair> hFacesToRemove(patchFaces.size());
 
-    for (label faceI = nOldInternalFaces_; faceI < faces_.size(); faceI++)
+    forAll(patchFaces, faceI)
     {
-        label pIndex = whichPatch(faceI);
-
-        if (pIndex != patchID)
-        {
-            continue;
-        }
-
         // Fetch owner cell
-        label cIndex = owner_[faceI];
-
-        // Add face to the list
-        patchFaces.append(faceI);
+        label cIndex = patchCells[faceI];
 
         // Fetch appropriate face / cell
-        const face& bFace = faces_[faceI];
+        const face& bFace = faces_[patchFaces[faceI]];
         const cell& ownCell = cells_[cIndex];
 
         // Get the opposing face from the cell
-        oppositeFace oFace = ownCell.opposingFace(faceI, faces_);
+        oppositeFace oFace = ownCell.opposingFace(patchFaces[faceI], faces_);
 
         if (!oFace.found())
         {
             // Something's wrong here.
             FatalErrorIn
             (
-                "const changeMap dynamicTopoFvMesh::removeCellLayer"
-                "(const label patchID)"
+                "\n\n"
+                "const changeMap dynamicTopoFvMesh::removeCellLayer\n"
+                "(\n"
+                "    const DynamicList<label>& patchFaces,\n"
+                "    const DynamicList<label>& patchCells\n"
+                ")\n"
             )
-                << " Face: " << faceI << " :: " << bFace << nl
+                << " Face: " << patchFaces[faceI]
+                << " :: " << bFace << nl
                 << " has no opposing face in cell: "
                 << cIndex << " :: " << ownCell << nl
                 << abort(FatalError);
@@ -7371,8 +7366,12 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
             // Something's wrong here.
             FatalErrorIn
             (
-                "const changeMap dynamicTopoFvMesh::removeCellLayer"
-                "(const label patchID)"
+                "\n\n"
+                "const changeMap dynamicTopoFvMesh::removeCellLayer\n"
+                "(\n"
+                "    const DynamicList<label>& patchFaces,\n"
+                "    const DynamicList<label>& patchCells\n"
+                ")\n"
             )
                 << " Face: " << oFace.oppositeIndex()
                 << " :: " << oFace << nl
@@ -7429,8 +7428,12 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
                 {
                     FatalErrorIn
                     (
-                        "const changeMap dynamicTopoFvMesh::removeCellLayer"
-                        "(const label patchID)"
+                        "\n\n"
+                        "const changeMap dynamicTopoFvMesh::removeCellLayer\n"
+                        "(\n"
+                        "    const DynamicList<label>& patchFaces,\n"
+                        "    const DynamicList<label>& patchCells\n"
+                        ")\n"
                     )
                         << " Could not find comparison edge: " << nl
                         << " cEdge: " << cEdge
@@ -7610,8 +7613,12 @@ const changeMap dynamicTopoFvMesh::removeCellLayer
             {
                 FatalErrorIn
                 (
-                    "const changeMap dynamicTopoFvMesh::removeCellLayer"
-                    "(const label patchID)"
+                    "\n\n"
+                    "const changeMap dynamicTopoFvMesh::removeCellLayer\n"
+                    "(\n"
+                    "    const DynamicList<label>& patchFaces,\n"
+                    "    const DynamicList<label>& patchCells\n"
+                    ")\n"
                 )
                     << " Could not find comparison edge: " << nl
                     << " cEdge: " << cEdge
