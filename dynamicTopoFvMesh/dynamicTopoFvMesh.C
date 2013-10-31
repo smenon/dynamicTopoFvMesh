@@ -4240,6 +4240,9 @@ bool dynamicTopoFvMesh::resetMesh()
             }
         }
 
+        // Old volumes pointer
+        autoPtr<scalarField> oldVolumesField;
+
         // Generate new mesh mapping information
         mapPolyMesh mpm
         (
@@ -4270,6 +4273,7 @@ bool dynamicTopoFvMesh::resetMesh()
             preMotionPoints,
             oldPatchStarts,
             oldPatchNMeshPoints,
+            oldVolumesField,
             true
         );
 
