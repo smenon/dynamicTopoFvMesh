@@ -68,7 +68,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
     MeshObject
     <
         polyMesh,
-        UpdateableMeshObject,
+        Foam::UpdateableMeshObject,
         mesquiteMotionSolver
     >(mesh),
     Mesh_(mesh),
@@ -116,7 +116,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
     MeshObject
     <
         polyMesh,
-        UpdateableMeshObject,
+        Foam::UpdateableMeshObject,
         mesquiteMotionSolver
     >(mesh),
     Mesh_(mesh),

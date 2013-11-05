@@ -77,7 +77,12 @@ class polyMesh;
 class mesquiteMotionSolver
 :
     public motionSolver,
-    public MeshObject<polyMesh, UpdateableMeshObject, mesquiteMotionSolver>
+    public MeshObject
+    <
+        polyMesh,
+        Foam::UpdateableMeshObject,
+        mesquiteMotionSolver
+    >
 {
 
     // Private data
