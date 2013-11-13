@@ -117,6 +117,9 @@ void topoMapper::storeGeometry() const
             volCentrePatches
         )
     );
+
+    // Set the cell-volumes pointer
+    cellVolumesPtr_ = new scalarField(mesh_.cellVolumes());
 }
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -134,6 +137,7 @@ topoMapper::topoMapper
     surfaceMap_(NULL),
     boundaryMap_(NULL),
     fluxCorrector_(fluxCorrector::New(mesh, dict)),
+    cellVolumesPtr_(NULL),
     cellCentresPtr_(NULL)
 {}
 
@@ -341,6 +345,22 @@ const vectorField& topoMapper::internalCentres() const
 }
 
 
+//- Return non-const access to cell volumes
+scalarField& topoMapper::internalVolumes()
+{
+    if (!cellVolumesPtr_)
+    {
+        FatalErrorIn
+        (
+            "scalarField& topoMapper::internalVolumes()"
+        ) << nl << " Pointer has not been set. "
+          << abort(FatalError);
+    }
+
+    return *cellVolumesPtr_;
+}
+
+
 //- Return stored patch centre information
 const vectorField& topoMapper::patchCentres(const label i) const
 {
@@ -519,6 +539,7 @@ void topoMapper::clear() const
     vGradPtrs_.clear();
 
     // Wipe out geomtry information
+    deleteDemandDrivenData(cellVolumesPtr_);
     deleteDemandDrivenData(cellCentresPtr_);
 
     // Clear maps

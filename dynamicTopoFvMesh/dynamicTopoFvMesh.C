@@ -4240,8 +4240,11 @@ bool dynamicTopoFvMesh::resetMesh()
             }
         }
 
-        // Old volumes pointer
-        autoPtr<scalarField> oldVolumesField;
+        // Old volumes pointer, with re-use
+        autoPtr<scalarField> oldVolumesField
+        (
+            new scalarField(fieldMapper.internalVolumes(), true)
+        );
 
         // Generate new mesh mapping information
         mapPolyMesh mpm
