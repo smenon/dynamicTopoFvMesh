@@ -346,13 +346,13 @@ const vectorField& topoMapper::internalCentres() const
 
 
 //- Return non-const access to cell volumes
-scalarField& topoMapper::internalVolumes()
+scalarField& topoMapper::internalVolumes() const
 {
     if (!cellVolumesPtr_)
     {
         FatalErrorIn
         (
-            "scalarField& topoMapper::internalVolumes()"
+            "scalarField& topoMapper::internalVolumes() const"
         ) << nl << " Pointer has not been set. "
           << abort(FatalError);
     }
