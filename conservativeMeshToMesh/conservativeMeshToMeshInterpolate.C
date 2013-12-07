@@ -38,11 +38,11 @@ namespace Foam
 template<class Type>
 void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
 (
-    Field<Type>& toF,
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf
+    Field<Type>& tgtField,
+    const GeometricField<Type, fvPatchField, volMesh>& srcVf
 ) const
 {
-    if (fromVf.mesh() != origSrcMesh())
+    if (srcVf.mesh() != srcMesh())
     {
         FatalErrorIn
         (
@@ -50,16 +50,16 @@ void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
             "void conservativeMeshToMesh::"
             "interpolateInternalFieldConserveFirstOrder\n"
             "(\n"
-            "    Field<Type>& toF,\n"
-            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf\n"
+            "    Field<Type>& tgtField,\n"
+            "    const GeometricField<Type, fvPatchField, volMesh>& srcVf\n"
             ") const\n"
-        )   << "the argument field does not correspond to the right mesh. "
-            << "Field size: " << fromVf.size()
-            << " mesh size: " << origSrcMesh().nCells()
+        )   << " The argument field does not correspond to the right mesh.\n"
+            << " Field size: " << srcVf.size() << nl
+            << " Mesh size: " << srcMesh().nCells() << nl
             << exit(FatalError);
     }
 
-    if (toF.size() != origTgtMesh().nCells())
+    if (tgtField.size() != tgtMesh().nCells())
     {
         FatalErrorIn
         (
@@ -67,35 +67,29 @@ void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
             "void conservativeMeshToMesh::"
             "interpolateInternalFieldConserveFirstOrder\n"
             "(\n"
-            "    Field<Type>& toF,\n"
-            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf\n"
+            "    Field<Type>& tgtField,\n"
+            "    const GeometricField<Type, fvPatchField, volMesh>& srcVf\n"
             ") const\n"
-        )   << "the argument field does not correspond to the right mesh. "
-            << "Field size: " << toF.size()
-            << " mesh size: " << origTgtMesh().nCells()
+        )   << " The argument field does not correspond to the right mesh.\n"
+            << " Field size: " << tgtField.size() << nl
+            << " mesh size: " << tgtMesh().nCells() << nl
             << exit(FatalError);
     }
 
-    // Fetch geometry
-    const scalarField& toCellVols = origTgtMesh().cellVolumes();
-
-    forAll(toF, celli)
+    forAll(tgtField, cellI)
     {
         // Initialize to zero
-        toF[celli] = pTraits<Type>::zero;
+        tgtField[cellI] = pTraits<Type>::zero;
 
         // Fetch addressing and weights for this cell
-        const labelList& addr = addressing_[celli];
-        const scalarField& w = volumes_[celli];
+        const labelList& addr = addressing_[cellI];
+        const scalarField& w = weights_[cellI];
 
         // Accumulate volume-weighted interpolate
-        forAll(addr, cellj)
+        forAll(addr, cellJ)
         {
-            toF[celli] += (w[cellj] * fromVf[addr[cellj]]);
+            tgtField[cellI] += (w[cellJ] * srcVf[addr[cellJ]]);
         }
-
-        // Divide by current volume
-        toF[celli] /= toCellVols[celli];
     }
 }
 
@@ -105,96 +99,92 @@ void conservativeMeshToMesh::interpolateInternalFieldConserveFirstOrder
 template<class Type>
 void conservativeMeshToMesh::interpolateInternalFieldConserve
 (
-    Field<Type>& toF,
+    Field<Type>& tgtField,
     const GeometricField
     <
         Type,
         fvPatchField,
         volMesh
-    >& fromVf,
+    >& srcVf,
     const GeometricField
     <
         typename outerProduct<vector, Type>::type,
         fvPatchField,
         volMesh
-    >& fromgVf
+    >& srcVfGrad
 ) const
 {
-    if (fromVf.mesh() != origSrcMesh())
+    if (srcVf.mesh() != srcMesh())
     {
         FatalErrorIn
         (
             "\n\n"
             "void conservativeMeshToMesh::interpolateInternalFieldConserve\n"
             "(\n"
-            "    Field<Type>& toF,\n"
-            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf,\n"
+            "    Field<Type>& tgtField,\n"
+            "    const GeometricField<Type, fvPatchField, volMesh>& srcVf,\n"
             "    const GeometricField\n"
             "    <\n"
             "        typename outerProduct<vector, Type>::type,\n"
             "        fvPatchField,\n"
             "        volMesh\n"
-            "    >& fromgVf\n"
+            "    >& srcVfGrad\n"
             ") const\n"
-        )   << "The argument field does not correspond to the right mesh. "
-            << "Field size: " << fromVf.size()
-            << " mesh size: " << origSrcMesh().nCells()
+        )   << " The argument field does not correspond to the right mesh.\n"
+            << " Field size: " << srcVf.size() << nl
+            << " mesh size: " << srcMesh().nCells() << nl
             << exit(FatalError);
     }
 
-    if (toF.size() != origTgtMesh().nCells())
+    if (tgtField.size() != tgtMesh().nCells())
     {
         FatalErrorIn
         (
             "\n\n"
             "void conservativeMeshToMesh::interpolateInternalFieldConserve\n"
             "(\n"
-            "    Field<Type>& toF,\n"
-            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf,\n"
+            "    Field<Type>& tgtField,\n"
+            "    const GeometricField<Type, fvPatchField, volMesh>& srcVf,\n"
             "    const GeometricField\n"
             "    <\n"
             "        typename outerProduct<vector, Type>::type,\n"
             "        fvPatchField,\n"
             "        volMesh\n"
-            "    >& fromgVf\n"
+            "    >& srcVfGrad\n"
             ") const\n"
-        )   << "The argument field does not correspond to the right mesh. "
-            << "Field size: " << toF.size()
-            << " mesh size: " << origTgtMesh().nCells()
+        )   << " The argument field does not correspond to the right mesh.\n"
+            << " Field size: " << tgtField.size() << nl
+            << " mesh size: " << tgtMesh().nCells() << nl
             << exit(FatalError);
     }
 
     // Fetch geometry
-    const scalarField& toCellVols = origTgtMesh().cellVolumes();
-    const vectorField& fromCellCentres = origSrcMesh().cellCentres();
+    const vectorField& srcCellCentres = srcMesh().cellCentres();
 
-    forAll(toF, celli)
+    forAll(tgtField, cellI)
     {
         // Initialize to zero
-        toF[celli] = pTraits<Type>::zero;
+        tgtField[cellI] = pTraits<Type>::zero;
 
         // Fetch addressing and weights for this cell
-        const labelList& addr = addressing_[celli];
-        const scalarField& w = volumes_[celli];
-        const vectorField& x = centres_[celli];
+        const labelList& addr = addressing_[cellI];
+        const scalarField& w = weights_[cellI];
+        const vectorField& x = centres_[cellI];
 
-        forAll(addr, cellj)
+        forAll(addr, cellJ)
         {
-            vector xCo = fromCellCentres[addr[cellj]];
+            vector xCo = srcCellCentres[addr[cellJ]];
 
             // Accumulate volume-weighted Taylor-series interpolate
-            toF[celli] +=
+            tgtField[cellI] +=
             (
-                w[cellj] *
+                w[cellJ] *
                 (
-                    fromVf[addr[cellj]]
-                  + (fromgVf[addr[cellj]] & (x[cellj] - xCo))
+                    srcVf[addr[cellJ]]
+                  + (srcVfGrad[addr[cellJ]] & (x[cellJ] - xCo))
                 )
             );
         }
-
-        // Divide by current volume
-        toF[celli] /= toCellVols[celli];
     }
 }
 
@@ -203,19 +193,19 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
 template<class Type>
 void conservativeMeshToMesh::interpolateInternalFieldConserve
 (
-    Field<Type>& toF,
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf
+    Field<Type>& tgtField,
+    const GeometricField<Type, fvPatchField, volMesh>& srcVf
 ) const
 {
     // Get the gradient of the original field.
     typedef typename outerProduct<vector, Type>::type GradCmptType;
 
-    tmp<GeometricField<GradCmptType, fvPatchField, volMesh> > gVf =
+    tmp<GeometricField<GradCmptType, fvPatchField, volMesh> > srcVfGrad =
     (
-        fvc::grad(fromVf)
+        fvc::grad(srcVf)
     );
 
-    interpolateInternalFieldConserve(toF, fromVf, gVf());
+    interpolateInternalFieldConserve(tgtField, srcVf, srcVfGrad());
 }
 
 
@@ -223,53 +213,53 @@ void conservativeMeshToMesh::interpolateInternalFieldConserve
 template<class Type>
 void conservativeMeshToMesh::interpolateInternalFieldInvDist
 (
-    Field<Type>& toF,
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf
+    Field<Type>& tgtField,
+    const GeometricField<Type, fvPatchField, volMesh>& srcVf
 ) const
 {
-    if (fromVf.mesh() != origSrcMesh())
+    if (srcVf.mesh() != srcMesh())
     {
         FatalErrorIn
         (
             "\n\n"
             "void conservativeMeshToMesh::interpolateInternalFieldInvDist\n"
             "(\n"
-            "    Field<Type>& toF,\n"
-            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf\n"
+            "    Field<Type>& tgtField,\n"
+            "    const GeometricField<Type, fvPatchField, volMesh>& srcVf\n"
             ") const\n"
-        )   << "the argument field does not correspond to the right mesh. "
-            << "Field size: " << fromVf.size()
-            << " mesh size: " << origSrcMesh().nCells()
+        )   << " The argument field does not correspond to the right mesh.\n"
+            << " Field size: " << srcVf.size() << nl
+            << " mesh size: " << srcMesh().nCells() << nl
             << exit(FatalError);
     }
 
-    if (toF.size() != origTgtMesh().nCells())
+    if (tgtField.size() != tgtMesh().nCells())
     {
         FatalErrorIn
         (
             "\n\n"
             "void conservativeMeshToMesh::interpolateInternalFieldInvDist\n"
             "(\n"
-            "    Field<Type>& toF,\n"
-            "    const GeometricField<Type, fvPatchField, volMesh>& fromVf\n"
+            "    Field<Type>& tgtField,\n"
+            "    const GeometricField<Type, fvPatchField, volMesh>& srcVf\n"
             ") const\n"
-        )   << "the argument field does not correspond to the right mesh. "
-            << "Field size: " << toF.size()
-            << " mesh size: " << origTgtMesh().nCells()
+        )   << " The argument field does not correspond to the right mesh.\n"
+            << " Field size: " << tgtField.size() << nl
+            << " mesh size: " << tgtMesh().nCells() << nl
             << exit(FatalError);
     }
 
     // Fetch geometry
-    const vectorField& newCentres = origTgtMesh().cellCentres();
-    const vectorField& oldCentres = origSrcMesh().cellCentres();
+    const vectorField& newCentres = tgtMesh().cellCentres();
+    const vectorField& oldCentres = srcMesh().cellCentres();
 
-    forAll(toF, celli)
+    forAll(tgtField, cellI)
     {
         // Initialize to zero
-        toF[celli] = pTraits<Type>::zero;
+        tgtField[cellI] = pTraits<Type>::zero;
 
         scalar weight = 0.0, totalWeight = 0.0;
-        const labelList& addr = addressing_[celli];
+        const labelList& addr = addressing_[cellI];
 
         forAll(addr, oldCellI)
         {
@@ -279,7 +269,7 @@ void conservativeMeshToMesh::interpolateInternalFieldInvDist
                 (
                     magSqr
                     (
-                        newCentres[celli]
+                        newCentres[cellI]
                       - oldCentres[addr[oldCellI]]
                     ),
                     VSMALL
@@ -287,13 +277,13 @@ void conservativeMeshToMesh::interpolateInternalFieldInvDist
             );
 
             // Accumulate field value
-            toF[celli] += (fromVf[addr[oldCellI]] * weight);
+            tgtField[cellI] += (srcVf[addr[oldCellI]] * weight);
 
             // Accumulate weights
             totalWeight += weight;
         }
 
-        toF[celli] *= (1.0 / totalWeight);
+        tgtField[cellI] *= (1.0 / totalWeight);
     }
 }
 
@@ -301,8 +291,8 @@ void conservativeMeshToMesh::interpolateInternalFieldInvDist
 template<class Type>
 void conservativeMeshToMesh::interpolateInternalField
 (
-    Field<Type>& toVf,
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf,
+    Field<Type>& tgtVf,
+    const GeometricField<Type, fvPatchField, volMesh>& srcVf,
     const label method
 ) const
 {
@@ -310,25 +300,21 @@ void conservativeMeshToMesh::interpolateInternalField
     {
         case CONSERVATIVE:
         {
-            interpolateInternalFieldConserve(toVf, fromVf);
+            interpolateInternalFieldConserve(tgtVf, srcVf);
 
             break;
         }
 
         case INVERSE_DISTANCE:
         {
-            interpolateInternalFieldInvDist
-            (
-                toVf,
-                fromVf
-            );
+            interpolateInternalFieldInvDist(tgtVf, srcVf);
 
             break;
         }
 
         case CONSERVATIVE_FIRST_ORDER:
         {
-            interpolateInternalFieldConserveFirstOrder(toVf, fromVf);
+            interpolateInternalFieldConserveFirstOrder(tgtVf, srcVf);
 
             break;
         }
@@ -351,13 +337,13 @@ void conservativeMeshToMesh::interpolateInternalField
 template<class Type>
 void conservativeMeshToMesh::interpolateInternalField
 (
-    Field<Type>& toF,
-    const tmp<GeometricField<Type, fvPatchField, volMesh> >& tfromVf,
+    Field<Type>& tgtField,
+    const tmp<GeometricField<Type, fvPatchField, volMesh> >& tsrcVf,
     const label method
 ) const
 {
-    interpolateInternalField(toF, tfromVf(), method);
-    tfromVf.clear();
+    interpolateInternalField(tgtField, tsrcVf(), method);
+    tsrcVf.clear();
 }
 
 
@@ -365,14 +351,14 @@ void conservativeMeshToMesh::interpolateInternalField
 template<class Type>
 void conservativeMeshToMesh::interpolate
 (
-    GeometricField<Type, fvPatchField, volMesh>& toVf,
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf,
+    GeometricField<Type, fvPatchField, volMesh>& tgtVf,
+    const GeometricField<Type, fvPatchField, volMesh>& srcVf,
     const GeometricField
     <
         typename outerProduct<vector, Type>::type,
         fvPatchField,
         volMesh
-    >& fromgVf,
+    >& srcVfGrad,
     const label method
 ) const
 {
@@ -380,21 +366,21 @@ void conservativeMeshToMesh::interpolate
     {
         case CONSERVATIVE:
         {
-            interpolateInternalFieldConserve(toVf, fromVf, fromgVf);
+            interpolateInternalFieldConserve(tgtVf, srcVf, srcVfGrad);
 
             break;
         }
 
         case INVERSE_DISTANCE:
         {
-            interpolateInternalFieldInvDist(toVf, fromVf);
+            interpolateInternalFieldInvDist(tgtVf, srcVf);
 
             break;
         }
 
         case CONSERVATIVE_FIRST_ORDER:
         {
-            interpolateInternalFieldConserveFirstOrder(toVf, fromVf);
+            interpolateInternalFieldConserveFirstOrder(tgtVf, srcVf);
 
             break;
         }
@@ -417,17 +403,17 @@ void conservativeMeshToMesh::interpolate
 template<class Type>
 void conservativeMeshToMesh::interpolate
 (
-    GeometricField<Type, fvPatchField, volMesh>& toVf,
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf,
+    GeometricField<Type, fvPatchField, volMesh>& tgtVf,
+    const GeometricField<Type, fvPatchField, volMesh>& srcVf,
     const label method
 ) const
 {
-    interpolateInternalField(toVf, fromVf, method);
+    interpolateInternalField(tgtVf, srcVf, method);
 
     // Temporary: Not mapping boundary fields at this point.
-    forAll(toVf.boundaryField(), patchI)
+    forAll(tgtVf.boundaryField(), patchI)
     {
-        toVf.boundaryField()[patchI] = pTraits<Type>::zero;
+        tgtVf.boundaryField()[patchI] = pTraits<Type>::zero;
     }
 }
 
@@ -435,13 +421,13 @@ void conservativeMeshToMesh::interpolate
 template<class Type>
 void conservativeMeshToMesh::interpolate
 (
-    GeometricField<Type, fvPatchField, volMesh>& toVf,
-    const tmp<GeometricField<Type, fvPatchField, volMesh> >& tfromVf,
+    GeometricField<Type, fvPatchField, volMesh>& tgtVf,
+    const tmp<GeometricField<Type, fvPatchField, volMesh> >& tsrcVf,
     const label method
 ) const
 {
-    interpolate(toVf, tfromVf(), method);
-    tfromVf.clear();
+    interpolate(tgtVf, tsrcVf(), method);
+    tsrcVf.clear();
 }
 
 
@@ -449,23 +435,23 @@ template<class Type>
 tmp<GeometricField<Type, fvPatchField, volMesh> >
 conservativeMeshToMesh::interpolate
 (
-    const GeometricField<Type, fvPatchField, volMesh>& fromVf,
+    const GeometricField<Type, fvPatchField, volMesh>& srcVf,
     const label method
 ) const
 {
     // Create and map the internal-field values
-    Field<Type> internalField(origTgtMesh().nCells(), pTraits<Type>::zero);
+    Field<Type> internalField(tgtMesh().nCells(), pTraits<Type>::zero);
 
-    interpolateInternalField(internalField, fromVf, method);
+    interpolateInternalField(internalField, srcVf, method);
 
     // Check whether both meshes have got the same number
     // of boundary patches
-    if (origSrcMesh().boundary().size() != origTgtMesh().boundary().size())
+    if (srcMesh().boundary().size() != tgtMesh().boundary().size())
     {
         FatalErrorIn
         (
             "conservativeMeshToMesh::interpolate"
-            "(const GeometricField<Type, fvPatchField, volMesh>& fromVf) const"
+            "(const GeometricField<Type, fvPatchField, volMesh>& srcVf) const"
         )   << "Incompatible meshes: different number of boundaries, "
                "only internal field may be interpolated"
             << exit(FatalError);
@@ -474,45 +460,45 @@ conservativeMeshToMesh::interpolate
     // Create and map the patch field values
     PtrList<fvPatchField<Type> > patchFields
     (
-        fromVf.boundaryField().size()
+        srcVf.boundaryField().size()
     );
 
-    forAll(fromVf.boundaryField(), patchI)
+    forAll(srcVf.boundaryField(), patchI)
     {
         patchFields.set
         (
             patchI,
             fvPatchField<Type>::New
             (
-                fromVf.boundaryField()[patchI],
-                origTgtMesh().boundary()[patchI],
+                srcVf.boundaryField()[patchI],
+                tgtMesh().boundary()[patchI],
                 DimensionedField<Type, volMesh>::null(),
-                meshToMesh::patchFieldInterpolator(boundaryAddressing_[patchI])
+                patchFieldInterpolator(boundaryAddressing_[patchI])
             )
         );
     }
 
     // Create the complete field from the pieces
-    tmp<GeometricField<Type, fvPatchField, volMesh> > ttoF
+    tmp<GeometricField<Type, fvPatchField, volMesh> > ttgtF
     (
         new GeometricField<Type, fvPatchField, volMesh>
         (
             IOobject
             (
-                "interpolated(" + fromVf.name() + ')',
-                origTgtMesh().time().timeName(),
-                origTgtMesh(),
+                "interpolated(" + srcVf.name() + ')',
+                tgtMesh().time().timeName(),
+                tgtMesh(),
                 IOobject::NO_READ,
                 IOobject::NO_WRITE
             ),
-            origTgtMesh(),
-            fromVf.dimensions(),
+            tgtMesh(),
+            srcVf.dimensions(),
             internalField,
             patchFields
         )
     );
 
-    return ttoF;
+    return ttgtF;
 }
 
 
@@ -520,16 +506,16 @@ template<class Type>
 tmp<GeometricField<Type, fvPatchField, volMesh> >
 conservativeMeshToMesh::interpolate
 (
-    const tmp<GeometricField<Type, fvPatchField, volMesh> >& tfromVf,
+    const tmp<GeometricField<Type, fvPatchField, volMesh> >& tsrcVf,
     const label method
 ) const
 {
     tmp<GeometricField<Type, fvPatchField, volMesh> > tint =
     (
-        interpolate(tfromVf(), method)
+        interpolate(tsrcVf(), method)
     );
 
-    tfromVf.clear();
+    tsrcVf.clear();
 
     return tint;
 }

@@ -60,8 +60,8 @@ void conservativeMeshToMesh::calcAddressingAndWeights
             << "calculating mesh-to-mesh cell addressing" << endl;
     }
 
-    // Fetch nearest-cell addressing from meshToMesh
-    const labelList& cAddr = meshToMeshPtr_().cellAddressing();
+    // Fetch nearest-cell addressing
+    const labelList& cAddr = conservativeMeshToMesh::cellAddressing();
 
     clockTime sTimer;
     bool reported = false;
@@ -100,10 +100,7 @@ void conservativeMeshToMesh::calcAddressingAndWeights
         // Fetch references
         labelList& parents = addressing_[cellI];
         scalarField& weights = weights_[cellI];
-        scalarField& volumes = volumes_[cellI];
         vectorField& centres = centres_[cellI];
-
-        label precisionAttempts = 0;
 
         // Obtain weighting factors for this cell.
         bool consistent =
@@ -114,10 +111,8 @@ void conservativeMeshToMesh::calcAddressingAndWeights
                 cAddr[cellI],
                 srcMesh().cellCells(),
                 matchTol,
-                precisionAttempts,
                 parents,
                 weights,
-                volumes,
                 centres
             )
         );
@@ -169,8 +164,8 @@ bool conservativeMeshToMesh::invertAddressing()
         IOobject
         (
             "addressing",
-            fromMesh().time().timeName(),
-            fromMesh(),
+            srcMesh().time().timeName(),
+            srcMesh(),
             IOobject::MUST_READ,
             IOobject::NO_WRITE
         )
@@ -178,7 +173,7 @@ bool conservativeMeshToMesh::invertAddressing()
 
     // Check for compatibility
     bool compatible = true;
-    label targetCells = toMesh().nCells();
+    label targetCells = tgtMesh().nCells();
     labelList nCellsPerCell(targetCells, 0);
 
     forAll(srcAddressing, cellI)
@@ -210,13 +205,13 @@ bool conservativeMeshToMesh::invertAddressing()
     }
 
     // Read weights
-    IOList<scalarField> srcVolumes
+    IOList<scalarField> srcWeights
     (
         IOobject
         (
-            "volumes",
-            fromMesh().time().timeName(),
-            fromMesh(),
+            "weights",
+            srcMesh().time().timeName(),
+            srcMesh(),
             IOobject::MUST_READ,
             IOobject::NO_WRITE
         )
@@ -228,8 +223,8 @@ bool conservativeMeshToMesh::invertAddressing()
         IOobject
         (
             "centres",
-            fromMesh().time().timeName(),
-            fromMesh(),
+            srcMesh().time().timeName(),
+            srcMesh(),
             IOobject::MUST_READ,
             IOobject::NO_WRITE
         )
@@ -239,7 +234,7 @@ bool conservativeMeshToMesh::invertAddressing()
     forAll(nCellsPerCell, cellI)
     {
         addressing_[cellI].setSize(nCellsPerCell[cellI]);
-        volumes_[cellI].setSize(nCellsPerCell[cellI]);
+        weights_[cellI].setSize(nCellsPerCell[cellI]);
         centres_[cellI].setSize(nCellsPerCell[cellI]);
     }
 
@@ -249,7 +244,7 @@ bool conservativeMeshToMesh::invertAddressing()
     forAll(srcAddressing, cellI)
     {
         const labelList& srcAddr = srcAddressing[cellI];
-        const scalarField& srcVl = srcVolumes[cellI];
+        const scalarField& srcVl = srcWeights[cellI];
         const vectorField& srcCt = srcCentres[cellI];
 
         forAll(srcAddr, j)
@@ -257,7 +252,7 @@ bool conservativeMeshToMesh::invertAddressing()
             label cellJ = srcAddr[j];
 
             addressing_[cellJ][nCellsPerCell[cellJ]] = cellI;
-            volumes_[cellJ][nCellsPerCell[cellJ]] = srcVl[j];
+            weights_[cellJ][nCellsPerCell[cellJ]] = srcVl[j];
             centres_[cellJ][nCellsPerCell[cellJ]] = srcCt[j];
 
             nCellsPerCell[cellJ]++;
@@ -265,18 +260,14 @@ bool conservativeMeshToMesh::invertAddressing()
     }
 
     // Check weights for consistency
-    const scalarField& V = toMesh().cellVolumes();
-
-    forAll(V, cellI)
+    forAll(weights_, cellI)
     {
-        if (mag((V[cellI] - sum(volumes_[cellI])) / V[cellI]) > 5e-14)
+        if (mag(1.0 - sum(weights_[cellI])) > 5e-14)
         {
             Info<< " Weights are not compatible. " << nl
                 << " Cell: " << cellI << nl
-                << " Volume: " << V[cellI] << nl
-                << " Sum(volumes): " << sum(volumes_[cellI]) << nl
-                << " Error: "
-                << mag((V[cellI] - sum(volumes_[cellI])) / V[cellI])
+                << " Sum(weights): " << sum(weights_[cellI]) << nl
+                << " Error: " << mag(1.0 - sum(weights_[cellI]))
                 << endl;
 
             compatible = false;
@@ -288,12 +279,10 @@ bool conservativeMeshToMesh::invertAddressing()
     {
         addressing_.clear();
         weights_.clear();
-        volumes_.clear();
         centres_.clear();
 
         addressing_.setSize(targetCells);
         weights_.setSize(targetCells);
-        volumes_.setSize(targetCells);
         centres_.setSize(targetCells);
 
         return false;
@@ -304,22 +293,71 @@ bool conservativeMeshToMesh::invertAddressing()
 }
 
 
+// Decompose the input cell using face-centre
+void conservativeMeshToMesh::decomposeCell
+(
+    const cell& polyCell,
+    const point& cCentre,
+    const faceList& faces,
+    const pointField& meshPoints,
+    const pointField& faceCentres,
+    DynamicList<TetPoints>& decompTets
+)
+{
+    TetPoints tPoints;
+
+    decompTets.clear();
+
+    forAll(polyCell, faceI)
+    {
+        label faceIndex = polyCell[faceI];
+
+        const face& polyFace = faces[faceIndex];
+        const vector& fCentre = faceCentres[faceIndex];
+
+        if (polyFace.size() == 3)
+        {
+            tPoints[0] = meshPoints[polyFace[0]];
+            tPoints[1] = meshPoints[polyFace[1]];
+            tPoints[2] = meshPoints[polyFace[2]];
+            tPoints[3] = cCentre;
+
+            // Add a new entry
+            decompTets.append(tPoints);
+        }
+        else
+        {
+            // Point ordering is irrelevant, since the
+            // clipping algorithm is expected to work
+            // regardless of orientation
+            forAll(polyFace, pI)
+            {
+                tPoints[0] = meshPoints[polyFace[pI]];
+                tPoints[1] = meshPoints[polyFace.nextLabel(pI)];
+                tPoints[2] = fCentre;
+                tPoints[3] = cCentre;
+
+                // Add a new entry
+                decompTets.append(tPoints);
+            }
+        }
+    }
+}
+
+
 // Compute weighting factors for a particular cell
 bool conservativeMeshToMesh::computeWeights
 (
     const label index,
-    const label oldCandidate,
-    const labelListList& oldNeighbourList,
+    const label srcCandidate,
+    const labelListList& srcNeighbourList,
     const scalar mTol,
-    label& precisionAttempts,
     labelList& parents,
     scalarField& weights,
-    scalarField& volumes,
-    vectorField& centres,
-    bool highPrecision
+    vectorField& centres
 ) const
 {
-    if (parents.size() || weights.size() || volumes.size() || centres.size())
+    if (parents.size() || weights.size() || centres.size())
     {
         FatalErrorIn
         (
@@ -327,46 +365,57 @@ bool conservativeMeshToMesh::computeWeights
             "bool conservativeMeshToMesh::computeWeights\n"
             "(\n"
             "    const label index,\n"
-            "    const label oldCandidate,\n"
-            "    const labelListList& oldNeighbourList,\n"
+            "    const label srcCandidate,\n"
+            "    const labelListList& srcNeighbourList,\n"
             "    const scalar mTol,\n"
-            "    label& precisionAttempts,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
-            "    scalarField& volumes,\n"
-            "    vectorField& centres,\n"
-            "    bool highPrecision\n"
+            "    vectorField& centres\n"
             ") const\n"
         )
             << " Addressing has already been calculated." << nl
             << " Index: " << index << nl
-            << " oldCandidate: " << oldCandidate << nl
+            << " srcCandidate: " << srcCandidate << nl
+            << " oldNeighborList: " << srcNeighbourList << nl
             << " Parents: " << parents << nl
             << " Weights: " << weights << nl
-            << " Volumes: " << volumes << nl
             << " Centres: " << centres << nl
             << abort(FatalError);
     }
 
     bool changed;
-    label nAttempts = 0, nIntersects = 0;
+    label nAttempts = 0, mapCandidate = -1;
 
-    label mapCandidate = -1;
+    const faceList& tgtFaces = tgtMesh().faces();
+    const cellList& tgtCells = tgtMesh().cells();
+    const pointField& tgtPoints = tgtMesh().points();
+    const vectorField& tgtFaceCentres = tgtMesh().faceCentres();
+    const vectorField& tgtCellCentres = tgtMesh().cellCentres();
+    const scalarField& tgtCellVolumes = tgtMesh().cellVolumes();
 
-    if (oldCandidate < 0)
+    const faceList& srcFaces = srcMesh().faces();
+    const cellList& srcCells = srcMesh().cells();
+    const pointField& srcPoints = srcMesh().points();
+    const vectorField& srcFaceCentres = srcMesh().faceCentres();
+    const vectorField& srcCellCentres = srcMesh().cellCentres();
+
+    const cell& tgtCell = tgtCells[index];
+    const vector& tgtCentre = tgtCellCentres[index];
+    const scalar& tgtVolume = tgtCellVolumes[index];
+
+    if (srcCandidate < 0)
     {
         // Loop through all cells, and find minimum
-        scalar minDist = GREAT;
         label minCell = -1;
+        scalar minDist = GREAT;
 
-        const vectorField& oldCentres = fromMesh().cellCentres();
-        const vector newCentre = toMesh().cellCentres()[index];
-
-        forAll(oldCentres, cellI)
+        forAll(srcCellCentres, cellI)
         {
-            if (magSqr(newCentre - oldCentres[cellI]) < minDist)
+            const vector& srcCentre = srcCellCentres[cellI];
+
+            if (magSqr(tgtCentre - srcCentre) < minDist)
             {
-                minDist = magSqr(newCentre - oldCentres[cellI]);
+                minDist = magSqr(tgtCentre - srcCentre);
                 minCell = cellI;
             }
         }
@@ -376,31 +425,26 @@ bool conservativeMeshToMesh::computeWeights
     }
     else
     {
-        mapCandidate = oldCandidate;
+        mapCandidate = srcCandidate;
     }
-
-    // Fetch the volume of the new cell
-    scalar newCellVolume = toMesh().cellVolumes()[index];
 
     // Maintain a check-list
     labelHashSet checked, skipped;
 
-    // Configure the input tet
-    FixedList<point, 4> tgtTetPoints, srcTetPoints;
+    // Decompose source / targets
+    DynamicList<TetPoints> srcTets(15);
+    DynamicList<TetPoints> tgtTets(15);
 
-    const cell& tgtCell = tgtMesh().cells()[index];
-
-    tgtTetPoints =
+    // Configure the target cell
+    decomposeCell
     (
-        tgtCell.points
-        (
-            tgtMesh().faces(),
-            tgtMesh().points()
-        )
+        tgtCell,
+        tgtCentre,
+        tgtFaces,
+        tgtPoints,
+        tgtFaceCentres,
+        tgtTets
     );
-
-    // Initialize the intersection object
-    tetIntersection tI(tgtTetPoints);
 
     // Loop and add intersections until nothing changes
     do
@@ -430,7 +474,7 @@ bool conservativeMeshToMesh::computeWeights
             }
             else
             {
-                checkEntities = oldNeighbourList[checkList[indexI]];
+                checkEntities = srcNeighbourList[checkList[indexI]];
             }
 
             forAll(checkEntities, entityI)
@@ -448,36 +492,63 @@ bool conservativeMeshToMesh::computeWeights
                     continue;
                 }
 
-                const cell& srcCell = srcMesh().cells()[checkEntity];
+                const cell& srcCell = srcCells[checkEntity];
+                const vector& srcCentre = srcCellCentres[checkEntity];
 
-                srcTetPoints =
+                // Decompose this source cell
+                decomposeCell
                 (
-                    srcCell.points
-                    (
-                        srcMesh().faces(),
-                        srcMesh().points()
-                    )
+                    srcCell,
+                    srcCentre,
+                    srcFaces,
+                    srcPoints,
+                    srcFaceCentres,
+                    srcTets
                 );
 
-                // Evaluate for intersection
-                bool intersect = tI.evaluate(srcTetPoints);
+                // Accumulate volume / centroid over all intersections
+                bool foundIntersect = false;
 
-                if (intersect)
+                scalar totalVolume = 0.0;
+                vector totalCentre = vector::zero;
+
+                forAll(tgtTets, tetI)
                 {
-                    scalar volume = 0.0;
-                    vector centre = vector::zero;
+                    // Initialize the intersection object
+                    tetIntersection intersector(tgtTets[tetI]);
 
-                    // Get volume / centroid
-                    tI.getVolumeAndCentre(volume, centre);
+                    forAll(srcTets, tetJ)
+                    {
+                        // Evaluate for intersection
+                        bool intersects = intersector.evaluate(srcTets[tetJ]);
+
+                        if (intersects)
+                        {
+                            scalar volume = 0.0;
+                            vector centre = vector::zero;
+
+                            // Get volume / centroid
+                            intersector.getVolumeAndCentre(volume, centre);
+
+                            // Accumulate volume / centroid
+                            totalVolume += volume;
+                            totalCentre += (volume * centre);
+
+                            foundIntersect = true;
+                        }
+                    }
+                }
+
+                if (foundIntersect)
+                {
+                    // Normalize centre
+                    totalCentre /= totalVolume + VSMALL;
 
                     label oldSize = parents.size();
 
                     parents.setSize(oldSize + 1, checkEntity);
-                    weights.setSize(oldSize + 1, volume);
-                    volumes.setSize(oldSize + 1, volume);
-                    centres.setSize(oldSize + 1, centre);
-
-                    nIntersects++;
+                    weights.setSize(oldSize + 1, totalVolume);
+                    centres.setSize(oldSize + 1, totalCentre);
 
                     if (!checked.found(checkEntity))
                     {
@@ -485,32 +556,6 @@ bool conservativeMeshToMesh::computeWeights
                     }
 
                     changed = true;
-                }
-                else
-                if (nAttempts == 0)
-                {
-                    FatalErrorIn
-                    (
-                        "\n\n"
-                        "bool conservativeMeshToMesh::computeWeights\n"
-                        "(\n"
-                        "    const label index,\n"
-                        "    const label oldCandidate,\n"
-                        "    const labelListList& oldNeighbourList,\n"
-                        "    const scalar mTol,\n"
-                        "    label& precisionAttempts,\n"
-                        "    labelList& parents,\n"
-                        "    scalarField& weights,\n"
-                        "    scalarField& volumes,\n"
-                        "    vectorField& centres,\n"
-                        "    bool highPrecision\n"
-                        ") const\n"
-                    )
-                        << " First intersection was not found." << nl
-                        << " Index: " << index << nl
-                        << " oldCandidate: " << oldCandidate << nl
-                        << " mapCandidate: " << mapCandidate << nl
-                        << abort(FatalError);
                 }
                 else
                 {
@@ -533,10 +578,10 @@ bool conservativeMeshToMesh::computeWeights
 
     } while (changed);
 
-    bool consistent = (mag(1.0 - (sum(weights)/newCellVolume)) < 1e-13);
+    bool consistent = (mag(1.0 - (sum(weights)/tgtVolume)) < 1e-13);
 
     // Normalize weights
-    weights /= newCellVolume;
+    weights /= tgtVolume;
 
     return consistent;
 }

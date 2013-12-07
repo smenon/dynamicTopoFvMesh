@@ -37,17 +37,15 @@ SourceFiles
     conservativeMeshToMesh.C
     conservativeMeshToMeshAddressing.C
     conservativeMeshToMeshInterpolate.C
-    conservativeMeshToMeshWriteVTK.C
 
 \*---------------------------------------------------------------------------*/
 
 #ifndef conservativeMeshToMesh_H
 #define conservativeMeshToMesh_H
 
+#include "fvMesh.H"
 #include "meshOps.H"
 #include "className.H"
-#include "meshToMesh.H"
-#include "tetPolyMesh.H"
 #include "multiThreader.H"
 #include "threadHandler.H"
 
@@ -64,23 +62,12 @@ class conservativeMeshToMesh
 {
     // Private data
 
-        //- Pointers to meshToMesh interpolation
-        autoPtr<meshToMesh> meshToMeshPtr_;
-
-        //- Hold references to the original mesh
-        const fvMesh& meshFrom_;
-        const fvMesh& meshTo_;
-
-        //- Pointers for optional decomposition
-        autoPtr<fvMesh> srcTetFvMesh_, tgtTetFvMesh_;
-        autoPtr<tetPolyMesh> srcTetMesh_, tgtTetMesh_;
+        //- Hold references to original meshes
+        const fvMesh& meshSrc_;
+        const fvMesh& meshTgt_;
 
         // Source cell indices for post-processing
         Map<label> srcCellIndex_;
-
-        //- Addressing from polyhedra to tets
-        labelList srcTetStarts_, srcTetSizes_;
-        labelList tgtTetStarts_, tgtTetSizes_;
 
         //- Interpolation cells
         IOList<labelList> addressing_;
@@ -88,20 +75,17 @@ class conservativeMeshToMesh
         //- Interpolation weights
         IOList<scalarField> weights_;
 
-        //- Interpolation volumes
-        IOList<scalarField> volumes_;
-
         //- Interpolation centres
         IOList<vectorField> centres_;
+
+        //- Cell addressing
+        labelList cellAddressing_;
 
         //- Mutex for the progress counter
         Mutex ctrMutex_;
 
         //- Progress counter
         label counter_;
-
-        //- 2D / 3D mesh characterstics
-        bool twoDMesh_;
 
         //- Typedef for convenience
         typedef threadHandler<conservativeMeshToMesh> handler;
@@ -111,17 +95,10 @@ class conservativeMeshToMesh
 
     // Private Member Functions
 
-        // Decompose a given mesh, using tetDecomposition
-        static const fvMesh& decomposeMesh
-        (
-            const fvMesh& initialMesh,
-            const bool decomp,
-            autoPtr<tetPolyMesh>& tetDecomp,
-            autoPtr<fvMesh>& tetDecompFvMesh,
-            labelList& tetStarts,
-            labelList& tetSizes
-        );
+        // Calculate nearest cell addressing
+        void calcCellAddressing();
 
+        // Calculate weighting factors
         void calcAddressingAndWeights
         (
             const label cellStart,
@@ -139,20 +116,17 @@ class conservativeMeshToMesh
             const label oldCandidate,
             const labelListList& oldNeighbourList,
             const scalar mTol,
-            label& precisionAttempts,
             labelList& parents,
             scalarField& weights,
-            scalarField& volumes,
-            vectorField& centres,
-            bool highPrecision = false
+            vectorField& centres
         ) const;
 
         //- Interpolate internal field values (conservative first-order)
         template<class Type>
         void interpolateInternalFieldConserveFirstOrder
         (
-            Field<Type>& toF,
-            const GeometricField<Type, fvPatchField, volMesh>& fromVf
+            Field<Type>& tgtF,
+            const GeometricField<Type, fvPatchField, volMesh>& srcVf
         ) const;
 
         //- Interpolate internal field values (conservative)
@@ -160,35 +134,35 @@ class conservativeMeshToMesh
         template<class Type>
         void interpolateInternalFieldConserve
         (
-            Field<Type>& toF,
+            Field<Type>& tgtF,
             const GeometricField
             <
                 Type,
                 fvPatchField,
                 volMesh
-            >& fromVf,
+            >& srcVf,
             const GeometricField
             <
                 typename outerProduct<vector, Type>::type,
                 fvPatchField,
                 volMesh
-            >& fromgVf
+            >& srcVfGrad
         ) const;
 
         //- Interpolate internal field values (conservative)
         template<class Type>
         void interpolateInternalFieldConserve
         (
-            Field<Type>& toF,
-            const GeometricField<Type, fvPatchField, volMesh>& fromVf
+            Field<Type>& tgtF,
+            const GeometricField<Type, fvPatchField, volMesh>& srcVf
         ) const;
 
         //- Interpolate internal field values (inverse-distance)
         template<class Type>
         void interpolateInternalFieldInvDist
         (
-            Field<Type>& toF,
-            const GeometricField<Type, fvPatchField, volMesh>& fromVf
+            Field<Type>& tgtF,
+            const GeometricField<Type, fvPatchField, volMesh>& srcVf
         ) const;
 
         // Output an entity as a VTK file
@@ -212,6 +186,20 @@ class conservativeMeshToMesh
 
     // Private static members
 
+        typedef FixedList<point, 4> TetPoints;
+
+        // Decompose the input cell using face-centre
+        static void decomposeCell
+        (
+            const cell& polyCell,
+            const point& cCentre,
+            const faceList& faces,
+            const pointField& meshPoints,
+            const pointField& faceCentres,
+            DynamicList<TetPoints>& decompTets
+        );
+
+        // Multi-threaded weighting factor computation
         static void calcAddressingAndWeightsThreaded(void *argument);
 
 public:
@@ -234,41 +222,76 @@ public:
         //  with an additional option of being multi-threaded
         conservativeMeshToMesh
         (
-            const fvMesh& fromMesh,
-            const fvMesh& toMesh,
+            const fvMesh& srcMesh,
+            const fvMesh& tgtMesh,
             const label nThreads = 1,
             const bool forceRecalculation = false,
-            const bool writeAddressing = false,
-            const bool decompSource = false,
-            const bool decompTarget = false
+            const bool writeAddressing = false
         );
 
     // Destructor
 
         ~conservativeMeshToMesh();
 
+    //- Patch-field interpolation class
+    class patchFieldInterpolator
+    :
+        public fvPatchFieldMapper
+    {
+        const labelList& directAddressing_;
+
+    public:
+
+        // Constructors
+
+            //- Construct given addressing
+            patchFieldInterpolator(const labelList& addr)
+            :
+                directAddressing_(addr)
+            {}
+
+
+        // Destructor
+
+            virtual ~patchFieldInterpolator()
+            {}
+
+
+        // Member Functions
+
+            virtual label size() const
+            {
+                return directAddressing_.size();
+            }
+
+            virtual label sizeBeforeMapping() const
+            {
+                return directAddressing_.size();
+            }
+
+            virtual bool direct() const
+            {
+                return true;
+            }
+
+            const labelList& directAddressing() const
+            {
+                return directAddressing_;
+            }
+    };
 
     // Member Functions
 
         // Access
 
-            // Return (decomposed) source mesh
-            const fvMesh& fromMesh() const;
-
-            // Return (decomposed) target mesh
-            const fvMesh& toMesh() const;
-
-            // Return basic source mesh (undecomposed)
-            const fvMesh& origSrcMesh() const;
-
-            // Return basic target mesh (undecomposed)
-            const fvMesh& origTgtMesh() const;
-
-            // Return (decomposed) source mesh
+            // Return source mesh
             const fvMesh& srcMesh() const;
 
-            // Return (decomposed) target mesh
+            // Return target mesh
             const fvMesh& tgtMesh() const;
+
+            // Fetch cell addressing
+            const labelList& cellAddressing() const;
 
         // Interpolation
 

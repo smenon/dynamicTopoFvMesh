@@ -88,8 +88,8 @@ void MapConservativeVolFields
     const label method
 )
 {
-    const fvMesh& meshSource = meshToMeshInterp.fromMesh();
-    const fvMesh& meshTarget = meshToMeshInterp.toMesh();
+    const fvMesh& meshSource = meshToMeshInterp.srcMesh();
+    const fvMesh& meshTarget = meshToMeshInterp.tgtMesh();
 
     word fieldClassName
     (
@@ -704,9 +704,7 @@ void testCyclicRemap
     const label method,
     const label nThreads,
     const bool forceRecalc,
-    const bool writeAddr,
-    const bool decompSource,
-    const bool decompTarget
+    const bool writeAddr
 )
 {
     // Initialize and populate fields
@@ -745,9 +743,7 @@ void testCyclicRemap
         meshTarget,
         nThreads,
         forceRecalc,
-        writeAddr,
-        decompSource,
-        decompTarget
+        writeAddr
     );
 
     // Create the interpolation scheme
@@ -757,9 +753,7 @@ void testCyclicRemap
         meshSource,
         nThreads,
         forceRecalc,
-        writeAddr,
-        decompTarget,
-        decompSource
+        writeAddr
     );
 
     Info<< " Remapping for " << nCycles << " cycles..." << endl;
@@ -835,9 +829,7 @@ void testMappingError
     const label method,
     const label nThreads,
     const bool forceRecalc,
-    const bool writeAddr,
-    const bool decompSource,
-    const bool decompTarget
+    const bool writeAddr
 )
 {
     // Initialize and populate fields
@@ -869,9 +861,7 @@ void testMappingError
         meshTarget,
         nThreads,
         forceRecalc,
-        writeAddr,
-        decompSource,
-        decompTarget
+        writeAddr
     );
 
     // Interpolate field
@@ -895,9 +885,7 @@ void mapConservativeMesh
     const label method,
     const label nThreads,
     const bool forceRecalc,
-    const bool writeAddr,
-    const bool decompSource,
-    const bool decompTarget
+    const bool writeAddr
 )
 {
     // Create the interpolation scheme
@@ -907,9 +895,7 @@ void mapConservativeMesh
         meshTarget,
         nThreads,
         forceRecalc,
-        writeAddr,
-        decompSource,
-        decompTarget
+        writeAddr
     );
 
     Info<< nl
@@ -1044,9 +1030,7 @@ int main(int argc, char *argv[])
             method,
             nThreads,
             forceRecalc,
-            writeAddr,
-            decompSource,
-            decompTarget
+            writeAddr
         );
 
         if (meshSource.nGeometricD() == 2)
@@ -1060,9 +1044,7 @@ int main(int argc, char *argv[])
                 method,
                 nThreads,
                 forceRecalc,
-                writeAddr,
-                decompSource,
-                decompTarget
+                writeAddr
             );
         }
     }
@@ -1075,9 +1057,7 @@ int main(int argc, char *argv[])
             method,
             nThreads,
             forceRecalc,
-            writeAddr,
-            decompSource,
-            decompTarget
+            writeAddr
         );
     }
 
