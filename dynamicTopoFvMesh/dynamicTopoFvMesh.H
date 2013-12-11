@@ -1109,7 +1109,7 @@ class dynamicTopoFvMesh
 public:
 
     //- Runtime type information
-    TypeName("dynamicTopoFvMesh");
+    TypeName("dynamicTopoFvMesh-git");
 
     // Constructors
 

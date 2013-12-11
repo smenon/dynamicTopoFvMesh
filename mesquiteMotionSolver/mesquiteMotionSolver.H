@@ -324,7 +324,7 @@ class mesquiteMotionSolver
 public:
 
     //- Runtime type information
-    TypeName("mesquiteMotionSolver");
+    TypeName("mesquiteMotionSolver-git");
 
 
     // Constructors
