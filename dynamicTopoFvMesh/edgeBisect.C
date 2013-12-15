@@ -306,7 +306,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMesh
-                const coupledInfo& recvMesh = recvMeshes_[pI];
+                const coupledMesh& recvMesh = recvMeshes_[pI];
                 const coupleMap& cMap = recvMesh.map();
 
                 label sIndex = -1;
@@ -406,7 +406,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         {
             cMapPtr = &(recvMeshes_[pI].map());
 
-            coupledInfo& recvMesh = recvMeshes_[pI];
+            coupledMesh& recvMesh = recvMeshes_[pI];
 
             // First check the slave for bisection feasibility.
             slaveMap =
@@ -488,7 +488,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         }
         else
         {
-            coupledInfo& recvMesh = recvMeshes_[pI];
+            coupledMesh& recvMesh = recvMeshes_[pI];
 
             // Bisect the slave face
             slaveMap =
@@ -2543,8 +2543,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
-                const coupledInfo& sendMesh = sendMeshes_[pI];
-                const coupledInfo& recvMesh = recvMeshes_[pI];
+                const coupledMesh& sendMesh = sendMeshes_[pI];
+                const coupledMesh& recvMesh = recvMeshes_[pI];
 
                 const coupleMap& scMap = sendMesh.map();
                 const coupleMap& rcMap = recvMesh.map();

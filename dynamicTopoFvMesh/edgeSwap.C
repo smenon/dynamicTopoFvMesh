@@ -161,7 +161,7 @@ bool dynamicTopoFvMesh::testDelaunay
         forAll(procIndices_, pI)
         {
             // Fetch non-const reference to subMeshes
-            const coupledInfo& recvMesh = recvMeshes_[pI];
+            const coupledMesh& recvMesh = recvMeshes_[pI];
 
             const coupleMap& cMap = recvMesh.map();
             const dynamicTopoFvMesh& sMesh = recvMesh.subMesh();
