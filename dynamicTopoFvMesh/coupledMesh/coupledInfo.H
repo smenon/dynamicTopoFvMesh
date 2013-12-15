@@ -51,19 +51,19 @@ namespace Foam
 
 // Class forward declarations
 class fvBoundaryMesh;
-class dynamicTopoFvMesh;
 
 /*---------------------------------------------------------------------------*\
                          Class coupledInfo Declaration
 \*---------------------------------------------------------------------------*/
 
+template <class MeshType>
 class coupledInfo
 {
     // Reference to the parent mesh
-    const dynamicTopoFvMesh& mesh_;
+    const MeshType& mesh_;
 
     // Auto pointer to a subMesh
-    autoPtr<dynamicTopoFvMesh> subMesh_;
+    autoPtr<MeshType> subMesh_;
 
     // Flag to determine whether maps have been built.
     bool builtMaps_;
@@ -76,51 +76,54 @@ class coupledInfo
     label masterFaceZone_;
     label slaveFaceZone_;
 
-    //- Disallow default bitwise assignment
+    // Disallow default bitwise assignment
     inline void operator=(const coupledInfo&);
 
 public:
 
-    // Constructor
-    inline coupledInfo
-    (
-        const dynamicTopoFvMesh& mesh,
-        const coupleMap& cMap,
-        const label mfzIndex = -1,
-        const label sfzIndex = -1
-    );
+    //- Constructors
 
-    inline coupledInfo
-    (
-        const dynamicTopoFvMesh& mesh,
-        const bool isTwoDMesh,
-        const bool isLocal,
-        const bool isSend,
-        const label patchIndex,
-        const label mPatch,
-        const label sPatch,
-        const label mfzIndex = -1,
-        const label sfzIndex = -1
-    );
+        // Construct given mesh, coupleMap and master / slave indices
+        inline coupledInfo
+        (
+            const MeshType& mesh,
+            const coupleMap& cMap,
+            const label mfzIndex = -1,
+            const label sfzIndex = -1
+        );
+
+        // Construct from components
+        inline coupledInfo
+        (
+            const MeshType& mesh,
+            const bool isTwoDMesh,
+            const bool isLocal,
+            const bool isSend,
+            const label patchIndex,
+            const label mPatch,
+            const label sPatch,
+            const label mfzIndex = -1,
+            const label sfzIndex = -1
+        );
 
     //- Access
 
         // Return a const reference to the parent mesh
-        inline const dynamicTopoFvMesh& baseMesh() const;
+        inline const MeshType& baseMesh() const;
 
         // Set a new subMesh
-        inline void setMesh(label index, dynamicTopoFvMesh* mesh);
+        inline void setMesh(label index, MeshType* mesh);
 
         // Return a reference to the subMesh
-        inline dynamicTopoFvMesh& subMesh();
+        inline MeshType& subMesh();
 
         // Return a const reference to the subMesh
-        inline const dynamicTopoFvMesh& subMesh() const;
+        inline const MeshType& subMesh() const;
 
-        // Have maps been built?
+        // Return if maps have been built
         inline bool builtMaps() const;
 
-        // Change the flag
+        // Set internal state of maps as built
         inline void setBuiltMaps();
 
         // Return a reference to the coupleMap
@@ -129,8 +132,10 @@ public:
         // Return a const reference to the coupleMap
         inline const coupleMap& map() const;
 
-        // Return the master / slave face zone IDs
+        // Return the master face zone ID
         inline label masterFaceZone() const;
+
+        // Return the slave face zone ID
         inline label slaveFaceZone() const;
 
     //- Interpolation

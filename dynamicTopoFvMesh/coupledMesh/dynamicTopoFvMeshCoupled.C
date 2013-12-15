@@ -274,7 +274,7 @@ void dynamicTopoFvMesh::initCoupledStack
                         }
 
                         // Fetch reference to subMeshes
-                        const coupledInfo& recvMesh = recvMeshes_[pI];
+                        const coupledMesh& recvMesh = recvMeshes_[pI];
                         const coupleMap& rcMap = recvMesh.map();
 
                         if (rcMap.findSlave(edgeEnum, eIndex) > -1)
@@ -950,7 +950,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
         sendMeshes_.set
         (
             pI,
-            new coupledInfo
+            new coupledMesh
             (
                 *this,               // Reference to this mesh
                 is2D(),              // 2D or 3D
@@ -975,7 +975,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
         recvMeshes_.set
         (
             pI,
-            new coupledInfo
+            new coupledMesh
             (
                 *this,               // Reference to this mesh
                 is2D(),              // 2D or 3D
@@ -1165,7 +1165,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
                 patchCoupling_.set
                 (
                     mPatch,
-                    new coupledInfo
+                    new coupledMesh
                     (
                         *this,
                         cMap,
@@ -1237,7 +1237,7 @@ void dynamicTopoFvMesh::readCoupledPatches()
         patchCoupling_.set
         (
             patchI,
-            new coupledInfo(*this, cMap, -1, -1)
+            new coupledMesh(*this, cMap, -1, -1)
         );
     }
 }
@@ -1290,8 +1290,8 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
     {
         label proc = procIndices_[pI];
 
-        const coupledInfo& sPM = sendMeshes_[pI];
-        const coupledInfo& rPM = recvMeshes_[pI];
+        const coupledMesh& sPM = sendMeshes_[pI];
+        const coupledMesh& rPM = recvMeshes_[pI];
 
         // Fetch the coupleMap
         const coupleMap& scMap = sPM.map();
@@ -1328,7 +1328,7 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
     forAll(procIndices_, pI)
     {
         // Fetch non-const reference to patchSubMesh
-        coupledInfo& rPM = recvMeshes_[pI];
+        coupledMesh& rPM = recvMeshes_[pI];
 
         // Fetch the coupleMap
         const coupleMap& rcMap = rPM.map();
@@ -4527,8 +4527,8 @@ void dynamicTopoFvMesh::handleCoupledPatches
     {
         label proc = procIndices_[pI];
 
-        coupledInfo& sPM = sendMeshes_[pI];
-        coupledInfo& rPM = recvMeshes_[pI];
+        coupledMesh& sPM = sendMeshes_[pI];
+        coupledMesh& rPM = recvMeshes_[pI];
 
         if (priority(proc, lessOp<label>(), Pstream::myProcNo()))
         {
@@ -4723,7 +4723,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
     {
         label proc = procIndices_[pI];
 
-        const coupledInfo& sPM = sendMeshes_[pI];
+        const coupledMesh& sPM = sendMeshes_[pI];
 
         if (priority(proc, lessOp<label>(), Pstream::myProcNo()))
         {
@@ -5725,7 +5725,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
     {
         label proc = procIndices_[pI];
 
-        coupledInfo& sPM = sendMeshes_[pI];
+        coupledMesh& sPM = sendMeshes_[pI];
 
         // Build the subMesh.
         buildProcessorPatchMesh(sPM, commonCells);
@@ -5755,7 +5755,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
         }
 
         // Obtain references
-        const coupledInfo& rPM = recvMeshes_[pI];
+        const coupledMesh& rPM = recvMeshes_[pI];
         const coupleMap& rcMap = rPM.map();
 
         // First read entity sizes.
@@ -5794,7 +5794,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMeshes()
 //   of neighbouring processors.
 void dynamicTopoFvMesh::buildProcessorPatchMesh
 (
-    coupledInfo& subMesh,
+    coupledMesh& subMesh,
     Map<labelList>& commonCells
 )
 {
@@ -6974,7 +6974,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
     {
         label proc = procIndices_[pI];
 
-        coupledInfo& rPM = recvMeshes_[pI];
+        coupledMesh& rPM = recvMeshes_[pI];
         const coupleMap& cMap = rPM.map();
         const labelList& ptBuffer = cMap.entityBuffer(coupleMap::PATCH_ID);
 
@@ -7609,7 +7609,7 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
         sendMeshes_.set
         (
             pI,
-            new coupledInfo
+            new coupledMesh
             (
                 *this,               // Reference to this mesh
                 is2D(),              // 2D or 3D
@@ -7810,17 +7810,17 @@ void dynamicTopoFvMesh::resetBoundaries()
     // valid, and must therefore be remapped.
     const fvBoundaryMesh& bdy = fvMesh::boundary();
 
-    coupledInfo::resizeBoundaries<volScalarField>(*this, bdy);
-    coupledInfo::resizeBoundaries<volVectorField>(*this, bdy);
-    coupledInfo::resizeBoundaries<volSphericalTensorField>(*this, bdy);
-    coupledInfo::resizeBoundaries<volSymmTensorField>(*this, bdy);
-    coupledInfo::resizeBoundaries<volTensorField>(*this, bdy);
+    coupledMesh::resizeBoundaries<volScalarField>(*this, bdy);
+    coupledMesh::resizeBoundaries<volVectorField>(*this, bdy);
+    coupledMesh::resizeBoundaries<volSphericalTensorField>(*this, bdy);
+    coupledMesh::resizeBoundaries<volSymmTensorField>(*this, bdy);
+    coupledMesh::resizeBoundaries<volTensorField>(*this, bdy);
 
-    coupledInfo::resizeBoundaries<surfaceScalarField>(*this, bdy);
-    coupledInfo::resizeBoundaries<surfaceVectorField>(*this, bdy);
-    coupledInfo::resizeBoundaries<surfaceSphericalTensorField>(*this, bdy);
-    coupledInfo::resizeBoundaries<surfaceSymmTensorField>(*this, bdy);
-    coupledInfo::resizeBoundaries<surfaceTensorField>(*this, bdy);
+    coupledMesh::resizeBoundaries<surfaceScalarField>(*this, bdy);
+    coupledMesh::resizeBoundaries<surfaceVectorField>(*this, bdy);
+    coupledMesh::resizeBoundaries<surfaceSphericalTensorField>(*this, bdy);
+    coupledMesh::resizeBoundaries<surfaceSymmTensorField>(*this, bdy);
+    coupledMesh::resizeBoundaries<surfaceTensorField>(*this, bdy);
 }
 
 
@@ -7963,7 +7963,7 @@ void dynamicTopoFvMesh::initFieldTransfers
     {
         label proc = procIndices_[pI];
 
-        const coupledInfo& cInfo = sendMeshes_[pI];
+        const coupledMesh& cInfo = sendMeshes_[pI];
 
         // Initialize stream
         stream.set(pI, new OStringStream(IOstream::BINARY));
@@ -8083,7 +8083,7 @@ void dynamicTopoFvMesh::syncFieldTransfers
 
     forAll(procIndices_, pI)
     {
-        const coupledInfo& cInfo = recvMeshes_[pI];
+        const coupledMesh& cInfo = recvMeshes_[pI];
 
         // Convert buffer to string
         string contents(recvBuffer[pI].begin(), recvBuffer[pI].size());
@@ -8164,13 +8164,13 @@ void dynamicTopoFvMesh::syncFieldTransfers
         faceAddressing[i] = i;
     }
 
-    coupledInfo::subMeshMapper vMap
+    coupledMesh::subMeshMapper vMap
     (
         nOldCells_,
         cellAddressing
     );
 
-    coupledInfo::subMeshMapper sMap
+    coupledMesh::subMeshMapper sMap
     (
         nOldInternalFaces_,
         faceAddressing
@@ -8178,7 +8178,7 @@ void dynamicTopoFvMesh::syncFieldTransfers
 
     // Prepare boundary mappers
     labelListList patchAddressing(nPhysical);
-    PtrList<coupledInfo::subMeshMapper> bMap(nPhysical);
+    PtrList<coupledMesh::subMeshMapper> bMap(nPhysical);
 
     forAll(bMap, patchI)
     {
@@ -8196,7 +8196,7 @@ void dynamicTopoFvMesh::syncFieldTransfers
         bMap.set
         (
             patchI,
-            new coupledInfo::subMeshMapper
+            new coupledMesh::subMeshMapper
             (
                 oldPatchSizes_[patchI],
                 patchAddressing[patchI]
@@ -8206,17 +8206,17 @@ void dynamicTopoFvMesh::syncFieldTransfers
 
     // Loop through all volFields and re-size
     // to accomodate additional cells / faces
-    coupledInfo::resizeMap(names[0], *this, vMap, irvMaps, bMap, brMaps, vsF);
-    coupledInfo::resizeMap(names[1], *this, vMap, irvMaps, bMap, brMaps, vvF);
-    coupledInfo::resizeMap(names[2], *this, vMap, irvMaps, bMap, brMaps, vsptF);
-    coupledInfo::resizeMap(names[3], *this, vMap, irvMaps, bMap, brMaps, vsytF);
-    coupledInfo::resizeMap(names[4], *this, vMap, irvMaps, bMap, brMaps, vtF);
+    coupledMesh::resizeMap(names[0], *this, vMap, irvMaps, bMap, brMaps, vsF);
+    coupledMesh::resizeMap(names[1], *this, vMap, irvMaps, bMap, brMaps, vvF);
+    coupledMesh::resizeMap(names[2], *this, vMap, irvMaps, bMap, brMaps, vsptF);
+    coupledMesh::resizeMap(names[3], *this, vMap, irvMaps, bMap, brMaps, vsytF);
+    coupledMesh::resizeMap(names[4], *this, vMap, irvMaps, bMap, brMaps, vtF);
 
-    coupledInfo::resizeMap(names[5], *this, sMap, irsMaps, bMap, brMaps, ssF);
-    coupledInfo::resizeMap(names[6], *this, sMap, irsMaps, bMap, brMaps, svF);
-    coupledInfo::resizeMap(names[7], *this, sMap, irsMaps, bMap, brMaps, ssptF);
-    coupledInfo::resizeMap(names[8], *this, sMap, irsMaps, bMap, brMaps, ssytF);
-    coupledInfo::resizeMap(names[9], *this, sMap, irsMaps, bMap, brMaps, stF);
+    coupledMesh::resizeMap(names[5], *this, sMap, irsMaps, bMap, brMaps, ssF);
+    coupledMesh::resizeMap(names[6], *this, sMap, irsMaps, bMap, brMaps, svF);
+    coupledMesh::resizeMap(names[7], *this, sMap, irsMaps, bMap, brMaps, ssptF);
+    coupledMesh::resizeMap(names[8], *this, sMap, irsMaps, bMap, brMaps, ssytF);
+    coupledMesh::resizeMap(names[9], *this, sMap, irsMaps, bMap, brMaps, stF);
 }
 
 
@@ -8999,8 +8999,8 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
 
     forAll(procIndices_, pI)
     {
-        coupledInfo& sPM = sendMeshes_[pI];
-        coupledInfo& rPM = recvMeshes_[pI];
+        coupledMesh& sPM = sendMeshes_[pI];
+        coupledMesh& rPM = recvMeshes_[pI];
 
         const coupleMap& scMap = sPM.map();
         const coupleMap& rcMap = rPM.map();
@@ -9077,7 +9077,7 @@ void dynamicTopoFvMesh::exchangeLengthBuffers()
     {
         forAll(procIndices_, pI)
         {
-            const coupledInfo& rPM = recvMeshes_[pI];
+            const coupledMesh& rPM = recvMeshes_[pI];
             const coupleMap& rcMap = rPM.map();
 
             if (rcMap.masterIndex() == Pstream::myProcNo())

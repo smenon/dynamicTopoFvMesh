@@ -26,7 +26,6 @@ License
 
 #include "Time.H"
 #include "coupledInfo.H"
-#include "dynamicTopoFvMesh.H"
 #include "emptyFvPatchFields.H"
 #include "emptyFvsPatchFields.H"
 #include "processorFvPatchFields.H"
@@ -38,10 +37,11 @@ namespace Foam
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-// Constructor for coupledInfo
-coupledInfo::coupledInfo
+// Construct given mesh, coupleMap and master / slave indices
+template <class MeshType>
+coupledInfo<MeshType>::coupledInfo
 (
-    const dynamicTopoFvMesh& mesh,
+    const MeshType& mesh,
     const coupleMap& cMap,
     const label mfzIndex,
     const label sfzIndex
@@ -55,9 +55,11 @@ coupledInfo::coupledInfo
 {}
 
 
-coupledInfo::coupledInfo
+// Construct from components
+template <class MeshType>
+coupledInfo<MeshType>::coupledInfo
 (
-    const dynamicTopoFvMesh& mesh,
+    const MeshType& mesh,
     const bool isTwoDMesh,
     const bool isLocal,
     const bool isSend,
@@ -99,7 +101,8 @@ coupledInfo::coupledInfo
 
 
 //- Construct given addressing
-coupledInfo::subMeshMapper::subMeshMapper
+template <class MeshType>
+coupledInfo<MeshType>::subMeshMapper::subMeshMapper
 (
     const coupledInfo& cInfo,
     const label patchI
@@ -128,27 +131,34 @@ coupledInfo::subMeshMapper::subMeshMapper
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-const dynamicTopoFvMesh& coupledInfo::baseMesh() const
+// Return a const reference to the parent mesh
+template <class MeshType>
+const MeshType&
+coupledInfo<MeshType>::baseMesh() const
 {
     return mesh_;
 }
 
 
-void coupledInfo::setMesh
+// Set a new subMesh
+template <class MeshType>
+void coupledInfo<MeshType>::setMesh
 (
     label index,
-    dynamicTopoFvMesh* mesh
+    MeshType* mesh
 )
 {
     subMesh_.set(mesh);
 }
 
 
-dynamicTopoFvMesh& coupledInfo::subMesh()
+// Return a reference to the subMesh
+template <class MeshType>
+MeshType& coupledInfo<MeshType>::subMesh()
 {
     if (!subMesh_.valid())
     {
-        FatalErrorIn("dynamicTopoFvMesh& coupledInfo::subMesh()")
+        FatalErrorIn("MeshType& coupledInfo::subMesh()")
             << " Sub-mesh pointer has not been set."
             << abort(FatalError);
     }
@@ -157,11 +167,13 @@ dynamicTopoFvMesh& coupledInfo::subMesh()
 }
 
 
-const dynamicTopoFvMesh& coupledInfo::subMesh() const
+// Return a const reference to the subMesh
+template <class MeshType>
+const MeshType& coupledInfo<MeshType>::subMesh() const
 {
     if (!subMesh_.valid())
     {
-        FatalErrorIn("const dynamicTopoFvMesh& coupledInfo::subMesh() const")
+        FatalErrorIn("const MeshType& coupledInfo::subMesh() const")
             << " Sub-mesh pointer has not been set."
             << abort(FatalError);
     }
@@ -170,46 +182,59 @@ const dynamicTopoFvMesh& coupledInfo::subMesh() const
 }
 
 
-bool coupledInfo::builtMaps() const
+// Return if maps have been built
+template <class MeshType>
+bool coupledInfo<MeshType>::builtMaps() const
 {
     return builtMaps_;
 }
 
 
-void coupledInfo::setBuiltMaps()
+// Set internal state of maps as built
+template <class MeshType>
+void coupledInfo<MeshType>::setBuiltMaps()
 {
     builtMaps_ = true;
 }
 
 
-coupleMap& coupledInfo::map()
+// Return a reference to the coupleMap
+template <class MeshType>
+coupleMap& coupledInfo<MeshType>::map()
 {
     return map_;
 }
 
 
-const coupleMap& coupledInfo::map() const
+// Return a const reference to the coupleMap
+template <class MeshType>
+const coupleMap& coupledInfo<MeshType>::map() const
 {
     return map_;
 }
 
 
-label coupledInfo::masterFaceZone() const
+// Return the master face zone ID
+template <class MeshType>
+label coupledInfo<MeshType>::masterFaceZone() const
 {
     return masterFaceZone_;
 }
 
 
-label coupledInfo::slaveFaceZone() const
+// Return the slave face zone ID
+template <class MeshType>
+label coupledInfo<MeshType>::slaveFaceZone() const
 {
     return slaveFaceZone_;
 }
 
 
 // Subset geometric field
-template<class GeomField>
+template <class MeshType>
+template <class GeomField>
 tmp<GeomField>
-coupledInfo::subSetField(const GeomField& f) const
+coupledInfo<MeshType>::subSetField(const GeomField& f) const
 {
     typedef typename GeomField::InternalField InternalField;
     typedef typename GeomField::PatchFieldType PatchFieldType;
@@ -299,8 +324,9 @@ coupledInfo::subSetField(const GeomField& f) const
 
 
 // Subset geometric fields from registry to output stream
-template<class GeomField>
-void coupledInfo::send
+template <class MeshType>
+template <class GeomField>
+void coupledInfo<MeshType>::send
 (
     const wordList& fieldNames,
     const word& fieldType,
@@ -314,7 +340,9 @@ void coupledInfo::send
     forAll(fieldNames, i)
     {
         // Fetch object from registry
-        const GeomField& fld = mesh_.lookupObject<GeomField>(fieldNames[i]);
+        const objectRegistry& db = mesh_.thisDb();
+
+        const GeomField& fld = db.lookupObject<GeomField>(fieldNames[i]);
 
         // Subset the field
         tmp<GeomField> tsubFld = subSetField(fld);
@@ -334,8 +362,9 @@ void coupledInfo::send
 
 
 // Set geometric field pointer from input dictionary
-template<class Type, template<class> class PatchField, class Mesh>
-void coupledInfo::setField
+template <class MeshType>
+template <class Type, template<class> class PatchField, class Mesh>
+void coupledInfo<MeshType>::setField
 (
     const wordList& fieldNames,
     const dictionary& fieldDicts,
@@ -461,8 +490,10 @@ void coupledInfo::setField
 }
 
 
+// Resize map for individual field
+template <class MeshType>
 template <class GeomField>
-void coupledInfo::resizeMap
+void coupledInfo<MeshType>::resizeMap
 (
     const label srcIndex,
     const subMeshMapper& internalMapper,
@@ -525,8 +556,9 @@ void coupledInfo::resizeMap
 
 
 // Resize all fields in registry
+template <class MeshType>
 template <class GeomField>
-void coupledInfo::resizeMap
+void coupledInfo<MeshType>::resizeMap
 (
     const wordList& names,
     const objectRegistry& mesh,
@@ -549,7 +581,7 @@ void coupledInfo::resizeMap
         );
 
         // Map the field
-        coupledInfo::resizeMap
+        coupledInfo<MeshType>::resizeMap
         (
             indexI,
             internalMapper,
@@ -564,8 +596,9 @@ void coupledInfo::resizeMap
 
 
 // Resize boundaryFields for all fields in the registry
-template<class GeomField>
-void coupledInfo::resizeBoundaries
+template <class MeshType>
+template <class GeomField>
+void coupledInfo<MeshType>::resizeBoundaries
 (
     const objectRegistry& mesh,
     const fvBoundaryMesh& boundary
@@ -631,7 +664,9 @@ void coupledInfo::resizeBoundaries
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void coupledInfo::operator=(const coupledInfo& rhs)
+// Disallow default bitwise assignment
+template <class MeshType>
+void coupledInfo<MeshType>::operator=(const coupledInfo& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)
@@ -644,6 +679,7 @@ void coupledInfo::operator=(const coupledInfo& rhs)
             << abort(FatalError);
     }
 }
+
 
 } // End namespace Foam
 

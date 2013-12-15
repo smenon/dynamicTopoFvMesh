@@ -66,11 +66,13 @@ class eMesh;
 class Stack;
 class changeMap;
 class objectMap;
-class coupledInfo;
 class motionSolver;
 class convexSetAlgorithm;
 class lengthScaleEstimator;
 class subMeshLduAddressing;
+
+template <class MeshType>
+class coupledInfo;
 
 /*---------------------------------------------------------------------------*\
                       Class dynamicTopoFvMesh Declaration
@@ -80,6 +82,11 @@ class dynamicTopoFvMesh
 :
     public dynamicFvMesh
 {
+    // Private typedefs
+
+        typedef coupledInfo<dynamicTopoFvMesh> coupledMesh;
+        typedef threadHandler<dynamicTopoFvMesh> meshHandler;
+
     // Private data
 
         //- Reference to base mesh
@@ -245,8 +252,6 @@ class dynamicTopoFvMesh
         autoPtr<IOmultiThreader> threader_;
 
         // Pointer-list of thread-handlers
-        typedef threadHandler<dynamicTopoFvMesh> meshHandler;
-
         PtrList<meshHandler> handlerPtr_;
 
         // Entity mutexes used for synchronization
@@ -254,7 +259,7 @@ class dynamicTopoFvMesh
         FixedList<Mutex, 4> entityMutex_;
 
         // Local coupled patch information
-        PtrList<coupledInfo> patchCoupling_;
+        PtrList<coupledMesh> patchCoupling_;
 
         // List of processors that this sub-domain talks to
         labelList procIndices_;
@@ -263,8 +268,8 @@ class dynamicTopoFvMesh
         labelList procPriority_;
 
         // Sub-Mesh pointers
-        PtrList<coupledInfo> sendMeshes_;
-        PtrList<coupledInfo> recvMeshes_;
+        PtrList<coupledMesh> sendMeshes_;
+        PtrList<coupledMesh> recvMeshes_;
 
     // Private Member Functions
 
@@ -1037,7 +1042,7 @@ class dynamicTopoFvMesh
         // Build patch sub-mesh for a specified processor
         void buildProcessorPatchMesh
         (
-            coupledInfo& subMesh,
+            coupledMesh& subMesh,
             Map<labelList>& commonCells
         );
 

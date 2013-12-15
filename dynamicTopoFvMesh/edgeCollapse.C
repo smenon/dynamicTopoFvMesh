@@ -231,8 +231,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
-                const coupledInfo& sendMesh = sendMeshes_[pI];
-                const coupledInfo& recvMesh = recvMeshes_[pI];
+                const coupledMesh& sendMesh = sendMeshes_[pI];
+                const coupledMesh& recvMesh = recvMeshes_[pI];
 
                 const coupleMap& scMap = sendMesh.map();
                 const coupleMap& rcMap = recvMesh.map();
@@ -3260,7 +3260,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 // Check coupleMaps for point coupling
                 const label pointEnum = coupleMap::POINT;
 
-                const coupledInfo& recvMesh = recvMeshes_[pI];
+                const coupledMesh& recvMesh = recvMeshes_[pI];
                 const coupleMap& cMap = recvMesh.map();
 
                 // Obtain non-const references
@@ -4122,8 +4122,8 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             forAll(procIndices_, pI)
             {
                 // Fetch reference to subMeshes
-                const coupledInfo& sendMesh = sendMeshes_[pI];
-                const coupledInfo& recvMesh = recvMeshes_[pI];
+                const coupledMesh& sendMesh = sendMeshes_[pI];
+                const coupledMesh& recvMesh = recvMeshes_[pI];
 
                 const coupleMap& scMap = sendMesh.map();
                 const coupleMap& rcMap = recvMesh.map();
