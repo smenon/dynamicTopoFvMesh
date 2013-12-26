@@ -304,7 +304,7 @@ void lengthScaleEstimator::writeLengthScaleInfo
             // First perform a blocking send/receive of the number of faces.
             OPstream::write
             (
-                Pstream::blocking,
+                Pstream::nonBlocking,
                 neiProcNo,
                 reinterpret_cast<const char*>(&(nSendFaces[pI])),
                 sizeof(label)
@@ -312,13 +312,17 @@ void lengthScaleEstimator::writeLengthScaleInfo
 
             IPstream::read
             (
-                Pstream::blocking,
+                Pstream::nonBlocking,
                 neiProcNo,
                 reinterpret_cast<char*>(&(nRecvFaces[pI])),
                 sizeof(label)
             );
         }
     }
+
+    // Wait for all transfers to complete.
+    OPstream::waitRequests();
+    IPstream::waitRequests();
 
     // Send info to neighbouring processors.
     forAll(boundary, patchI)
