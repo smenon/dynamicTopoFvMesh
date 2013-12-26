@@ -416,8 +416,7 @@ void dynamicTopoFvMesh::executeLoadBalancing
         FatalErrorIn("void dynamicTopoFvMesh::executeLoadBalancing()")
             << "You have selected decomposition method "
             << decomposer.typeName
-            << " which is not parallel aware." << endl
-            << "Please select one that is (hierarchical, parMetis)"
+            << " which is not parallel aware."
             << exit(FatalError);
     }
 
@@ -463,8 +462,8 @@ void dynamicTopoFvMesh::executeLoadBalancing
     (
         decomposer.decompose
         (
-            primitiveMesh::cellCentres(),
-            scalarField(nCells_, 1)
+            (*this),
+            primitiveMesh::cellCentres()
         )
     );
 
