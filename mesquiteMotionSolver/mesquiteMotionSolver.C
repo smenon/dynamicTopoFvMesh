@@ -2008,8 +2008,8 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
             }
 
             // Fetch references
-            Map<label>& aspMap = sendSurfPointMap_[pI];
-            Map<label>& anbMap = recvSurfPointMap_[pI];
+            Map<label>& sspMap = sendSurfPointMap_[pI];
+            Map<label>& rspMap = recvSurfPointMap_[pI];
             DynamicList<point>& asPoints = auxSurfPoints[pI];
 
             // Fetch mesh points for this patch
@@ -2038,10 +2038,10 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                 }
 
                 // Add an entry if it wasn't done before
-                if (!aspMap.found(fieldIndex))
+                if (!sspMap.found(fieldIndex))
                 {
-                    aspMap.insert(fieldIndex, asPoints.size());
-                    anbMap.insert(fieldIndex, asPoints.size());
+                    sspMap.insert(fieldIndex, asPoints.size());
+                    rspMap.insert(fieldIndex, asPoints.size());
 
                     // Insert corresponding point
                     asPoints.append(points[local]);
@@ -2054,8 +2054,8 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         forAll(globalProcPoints_, pI)
         {
             // Fetch references
-            Map<label>& aspMap = sendSurfPointMap_[pI];
-            Map<label>& anbMap = recvSurfPointMap_[pI];
+            Map<label>& sspMap = sendSurfPointMap_[pI];
+            Map<label>& rspMap = recvSurfPointMap_[pI];
             DynamicList<point>& asPoints = auxSurfPoints[pI];
 
             const List<labelPair>& pLabels = globalProcPoints_[pI];
@@ -2089,7 +2089,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                 }
 
                 // Add an entry if it wasn't done before
-                if (!aspMap.found(fieldIndex))
+                if (!sspMap.found(fieldIndex))
                 {
                     if (debug)
                     {
@@ -2098,8 +2098,8 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                             << endl;
                     }
 
-                    aspMap.insert(fieldIndex, asPoints.size());
-                    anbMap.insert(fieldIndex, asPoints.size());
+                    sspMap.insert(fieldIndex, asPoints.size());
+                    rspMap.insert(fieldIndex, asPoints.size());
 
                     // Insert corresponding point
                     asPoints.append(points[local]);
@@ -2199,6 +2199,11 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         }
     }
 
+    // Configure a magnitude for distance matching
+    const boundBox& box = mesh().bounds();
+
+    const vector outsideBoxMax = box.max() + vector::one;
+
     // Send and receive points for geometric match
     forAll(sendSurfPointMap_, pI)
     {
@@ -2207,13 +2212,15 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         // Set size to max, in case of mismatch
         label maxSize = Foam::max(sendSurfPointMap_[pI].size(), nProcSize[pI]);
 
-        // Size-up send / recv fields
-        sendSurfFields_[pI].setSize(maxSize, vector::zero);
-        recvSurfFields_[pI].setSize(maxSize, vector::zero);
-
         // Fetch references
+        const DynamicList<point>& bufPoints = auxSurfPoints[pI];
+
+        vectorField& sendField = sendSurfFields_[pI];
         vectorField& recvField = recvSurfFields_[pI];
-        DynamicList<point>& bufPoints = auxSurfPoints[pI];
+
+        // Size-up send / recv fields
+        sendField.setSize(maxSize, vector::zero);
+        recvField.setSize(maxSize, vector::zero);
 
         // Send and receive points
         if (recvField.size())
@@ -2222,15 +2229,29 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
             parRead(proc, recvField);
         }
 
-        if (bufPoints.size())
+        if (sendField.size())
         {
+            // Copy auxiliary points.
+            // If there is a mismatch, send invalid values
+            // so that geometric matches don't result in
+            // false positives. This can occur in situations
+            // where points on a neighbouring processor lie
+            // on a slip patch, but this processor touches
+            // the patch only via points or edges.
+            forAll(bufPoints, pointI)
+            {
+                sendField[pointI] = bufPoints[pointI];
+            }
+
+            for (label i = bufPoints.size(); i < sendField.size(); ++i)
+            {
+                sendField[i] = outsideBoxMax;
+            }
+
             // Send points to neighbour
-            parWrite(proc, bufPoints);
+            parWrite(proc, sendField);
         }
     }
-
-    // Configure a magnitude for distance matching
-    const boundBox& box = mesh().bounds();
 
     // Fetch relative tolerance
     scalar relTol = 1e-4;
@@ -2323,9 +2344,9 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         }
 
         // Renumber to shuffled indices
-        Map<label>& anbMap = recvSurfPointMap_[pI];
+        Map<label>& rspMap = recvSurfPointMap_[pI];
 
-        forAllIter(Map<label>, anbMap, pIter)
+        forAllIter(Map<label>, rspMap, pIter)
         {
             // Skip mismatches
             if (pointMap[pIter()] < 0)
