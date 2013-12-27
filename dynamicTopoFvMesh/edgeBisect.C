@@ -71,7 +71,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     if
     (
-        (statistics_[0] > maxModifications_) &&
+        (status(TOTAL_MODIFICATIONS) > maxModifications_) &&
         (maxModifications_ > -1)
     )
     {
@@ -2333,7 +2333,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     topoChangeFlag_ = true;
 
     // Increment the counter
-    statistics_[3]++;
+    status(TOTAL_BISECTIONS)++;
 
     // Increment surface-counter
     if (c1 == -1)
@@ -2341,12 +2341,12 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         // Do not update stats for processor patches
         if (!processorCoupledEntity(fIndex))
         {
-            statistics_[5]++;
+            status(SURFACE_BISECTIONS)++;
         }
     }
 
     // Increment the number of modifications
-    statistics_[0]++;
+    status(TOTAL_MODIFICATIONS)++;
 
     // Specify that the operation was successful
     map.type() = 1;
@@ -2394,7 +2394,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     if
     (
-        (statistics_[0] > maxModifications_) &&
+        (status(TOTAL_MODIFICATIONS) > maxModifications_) &&
         (maxModifications_ > -1)
     )
     {
@@ -2832,7 +2832,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         // Do not update stats for processor patches
         if (!processorCoupledEntity(eIndex))
         {
-            statistics_[5]++;
+            status(SURFACE_BISECTIONS)++;
         }
     }
 
@@ -4098,10 +4098,10 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     topoChangeFlag_ = true;
 
     // Increment the counter
-    statistics_[3]++;
+    status(TOTAL_BISECTIONS)++;
 
     // Increment the number of modifications
-    statistics_[0]++;
+    status(TOTAL_MODIFICATIONS)++;
 
     // Specify that the operation was successful
     map.type() = 1;

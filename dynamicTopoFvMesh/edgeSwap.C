@@ -1074,7 +1074,7 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
     topoChangeFlag_ = true;
 
     // Increment the counter
-    statistics_[1]++;
+    status(TOTAL_SWAPS)++;
 
     // Return a successful operation.
     map.type() = 1;
@@ -1854,7 +1854,7 @@ const changeMap dynamicTopoFvMesh::removeEdgeFlips
     map.removeEdge(eIndex);
 
     // Increment the counter
-    statistics_[1]++;
+    status(TOTAL_SWAPS)++;
 
     // Set the flag
     topoChangeFlag_ = true;
@@ -3288,7 +3288,7 @@ const changeMap dynamicTopoFvMesh::swap32
         faceEdges_[newBdyFaceIndex[1]] = bdyFaceEdges[1];
 
         // Update the number of surface swaps.
-        statistics_[2]++;
+        status(SURFACE_SWAPS)++;
     }
 
     newTetCell[0][nF0++] = newFaceIndex;

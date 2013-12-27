@@ -135,7 +135,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     nOldInternalEdges_(0),
     nInternalEdges_(0),
     maxModifications_(-1),
-    statistics_(0),
+    statistics_(TOTAL_OP_TYPES, 0),
     sliverThreshold_(0.1),
     slicePairs_(0),
     maxTetsPerEdge_(-1),
@@ -259,7 +259,7 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     nOldInternalEdges_(edgeStarts[0]),
     nInternalEdges_(edgeStarts[0]),
     maxModifications_(mesh.maxModifications_),
-    statistics_(0),
+    statistics_(TOTAL_OP_TYPES, 0),
     sliverThreshold_(mesh.sliverThreshold_),
     slicePairs_(0),
     maxTetsPerEdge_(mesh.maxTetsPerEdge_),
@@ -1759,6 +1759,8 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
 
             if (Pstream::master())
             {
+                Info<< nl << "Waiting for debugger attachment..." << endl;
+
                 cin >> wait;
 
                 for (label i = 0; i < Pstream::nProcs(); i++)
@@ -2660,7 +2662,7 @@ void dynamicTopoFvMesh::remove2DSlivers()
         {
             if (collapseQuadFace(firstFace).type() > 0)
             {
-                statistics_[7]++;
+                status(TOTAL_SLIVERS)++;
             }
 
             continue;
@@ -2670,7 +2672,7 @@ void dynamicTopoFvMesh::remove2DSlivers()
         {
             if (collapseQuadFace(secondFace).type() > 0)
             {
-                statistics_[7]++;
+                status(TOTAL_SLIVERS)++;
             }
 
             continue;
@@ -2694,7 +2696,7 @@ void dynamicTopoFvMesh::remove2DSlivers()
                 {
                     if (collapseQuadFace(aF[faceI].index()).type() > 0)
                     {
-                        statistics_[7]++;
+                        status(TOTAL_SLIVERS)++;
                     }
 
                     break;
@@ -2722,7 +2724,7 @@ void dynamicTopoFvMesh::remove2DSlivers()
                 {
                     if (collapseQuadFace(aF[faceI].index()).type() > 0)
                     {
-                        statistics_[7]++;
+                        status(TOTAL_SLIVERS)++;
                     }
 
                     break;
@@ -2750,7 +2752,7 @@ void dynamicTopoFvMesh::remove2DSlivers()
                 {
                     if (collapseQuadFace(aF[faceI].index()).type() > 0)
                     {
-                        statistics_[7]++;
+                        status(TOTAL_SLIVERS)++;
                     }
 
                     break;
@@ -3516,7 +3518,7 @@ void dynamicTopoFvMesh::removeSlivers()
         // Increment the count for successful sliver removal
         if (success)
         {
-            statistics_[7]++;
+            status(TOTAL_SLIVERS)++;
         }
     }
 
@@ -3947,31 +3949,36 @@ bool dynamicTopoFvMesh::resetMesh()
     // Reduce across processors.
     reduce(topoChangeFlag_, orOp<bool>());
 
+    const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
+
     if (topoChangeFlag_)
     {
         // Write out statistics
-        if (Pstream::parRun() && debug)
+        if (Pstream::parRun())
         {
-            Pout<< " Bisections :: Total: " << status(3)
-                << ", Surface: " << status(5) << nl
-                << " Collapses  :: Total: " << status(4)
-                << ", Surface: " << status(6) << nl
-                << " Swaps      :: Total: " << status(1)
-                << ", Surface: " << status(2) << endl;
-        }
-        else
-        {
-            Info<< " Bisections :: Total: " << status(3)
-                << ", Surface: " << status(5) << nl
-                << " Collapses  :: Total: " << status(4)
-                << ", Surface: " << status(6) << nl
-                << " Swaps      :: Total: " << status(1)
-                << ", Surface: " << status(2) << endl;
+            if (debug)
+            {
+                Pout<< " Bisections :: Total: " << status(TOTAL_BISECTIONS)
+                    << ", Surface: " << status(SURFACE_BISECTIONS) << nl
+                    << " Collapses  :: Total: " << status(TOTAL_COLLAPSES)
+                    << ", Surface: " << status(SURFACE_COLLAPSES) << nl
+                    << " Swaps      :: Total: " << status(TOTAL_SWAPS)
+                    << ", Surface: " << status(SURFACE_SWAPS) << endl;
+            }
+
+            reduce(statistics_, sumOp<labelList>());
         }
 
-        if (status(7))
+        Info<< " Bisections :: Total: " << status(TOTAL_BISECTIONS)
+            << ", Surface: " << status(SURFACE_BISECTIONS) << nl
+            << " Collapses  :: Total: " << status(TOTAL_COLLAPSES)
+            << ", Surface: " << status(SURFACE_COLLAPSES) << nl
+            << " Swaps      :: Total: " << status(TOTAL_SWAPS)
+            << ", Surface: " << status(SURFACE_SWAPS) << endl;
+
+        if (status(TOTAL_SLIVERS))
         {
-            Pout<< " Slivers    :: " << status(7) << endl;
+            Pout<< " Slivers    :: " << status(TOTAL_SLIVERS) << endl;
         }
 
         // Fetch reference to mapper
@@ -4014,8 +4021,6 @@ bool dynamicTopoFvMesh::resetMesh()
 
         // Determine if mapping is to be skipped
         // Optionally skip mapping for remeshing-only / pre-processing
-        const dictionary& meshSubDict = dict_.subDict("dynamicTopoFvMesh");
-
         bool skipMapping = false;
 
         if (meshSubDict.found("skipMapping") || mandatory_)
@@ -4403,6 +4408,30 @@ bool dynamicTopoFvMesh::resetMesh()
 
     // Dump length-scale to disk, if requested.
     calculateLengthScale(true);
+
+    // Optionally check if decomposition is to be written out
+    if
+    (
+        Pstream::parRun() &&
+        meshSubDict.found("writeDecomposition") &&
+        readBool(meshSubDict.lookup("writeDecomposition"))
+    )
+    {
+        volScalarField
+        (
+            IOobject
+            (
+                "decomposition",
+                time().timeName(),
+                *this,
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            ),
+            *this,
+            dimensionedScalar("rank", dimless, Pstream::myProcNo())
+        ).write();
+    }
 
     // Reset and return flag
     if (topoChangeFlag_)
