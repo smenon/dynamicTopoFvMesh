@@ -4406,6 +4406,7 @@ bool dynamicTopoFvMesh::resetMesh()
     if
     (
         Pstream::parRun() &&
+        time().outputTime() &&
         meshSubDict.found("writeDecomposition") &&
         readBool(meshSubDict.lookup("writeDecomposition"))
     )
