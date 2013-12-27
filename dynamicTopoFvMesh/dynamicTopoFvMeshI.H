@@ -583,34 +583,20 @@ inline label dynamicTopoFvMesh::whichEdgePatch
 }
 
 
-// Report topo-modification status
-//  - Enumerants are as follows
-//    [0] nModifications
-//    [1] Total swaps (internal and surface)
-//    [2] Surface swaps
-//    [3] Total bisections
-//    [4] Total collapses
-//    [5] Surface bisections
-//    [6] Surface collapses
-//    [7] Slivers removed
-inline label dynamicTopoFvMesh::status(const label type) const
+// Report or alter topo-modification status
+inline label& dynamicTopoFvMesh::status(const label type)
 {
-    if (type < statistics_.size())
-    {
-        return statistics_[type];
-    }
-    else
+    if (type < 0 || type >= TOTAL_OP_TYPES)
     {
         FatalErrorIn
         (
-            "inline label dynamicTopoFvMesh::status"
-            "(const label type) const"
+            "inline label& dynamicTopoFvMesh::status(const label type)"
         )
             << " Unknown type: " << type << nl
             << abort(FatalError);
     }
 
-    return 0;
+    return statistics_[type];
 }
 
 

@@ -87,6 +87,21 @@ class dynamicTopoFvMesh
         typedef coupledInfo<dynamicTopoFvMesh> coupledMesh;
         typedef threadHandler<dynamicTopoFvMesh> meshHandler;
 
+    // Private enumerants
+
+        enum opType
+        {
+            TOTAL_MODIFICATIONS = 0,
+            TOTAL_SWAPS         = 1,
+            TOTAL_BISECTIONS    = 2,
+            TOTAL_COLLAPSES     = 3,
+            SURFACE_SWAPS       = 4,
+            SURFACE_BISECTIONS  = 5,
+            SURFACE_COLLAPSES   = 6,
+            TOTAL_SLIVERS       = 7,
+            TOTAL_OP_TYPES
+        };
+
     // Private data
 
         //- Reference to base mesh
@@ -230,7 +245,7 @@ class dynamicTopoFvMesh
 
         //- Run-time statistics
         label maxModifications_;
-        FixedList<label, 8> statistics_;
+        labelList statistics_;
 
         //- Sliver exudation
         scalar sliverThreshold_;
@@ -428,8 +443,8 @@ class dynamicTopoFvMesh
         // Method to determine the boundary patch index for a given edge
         inline label whichEdgePatch(const label index) const;
 
-        // Report topo-modification status
-        inline label status(const label type) const;
+        // Report or alter topo-modification status
+        inline label& status(const label type);
 
         // Method for the swapping of a quad-face in 2D
         const changeMap
