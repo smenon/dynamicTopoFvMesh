@@ -28,8 +28,8 @@ License
 #include "triFace.H"
 #include "objectMap.H"
 #include "changeMap.H"
-#include "multiThreader.H"
 #include "coupledInfo.H"
+#include "multiThreader.H"
 #include "dynamicTopoFvMesh.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -6259,6 +6259,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             }
         }
 
+        // Prepare a checklist
+        boolList matchedFaces(checkFaces.size(), false);
+        boolList matchedEdges(checkEdges.size(), false);
+
         // Output check entities
         if (debug > 4)
         {
@@ -6360,8 +6364,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         << abort(FatalError);
                 }
 
-                bool matchedFace = false;
-
                 // Fetch edges connected to first slave point
                 const labelList& spEdges = pointEdges_[cF[0]];
 
@@ -6376,9 +6378,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                     const labelList& seFaces = edgeFaces_[seIndex];
 
-                    forAll(seFaces, faceI)
+                    forAll(seFaces, faceJ)
                     {
-                        label sfIndex = seFaces[faceI];
+                        label sfIndex = seFaces[faceJ];
 
                         if (whichPatch(sfIndex) == -1)
                         {
@@ -6425,19 +6427,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                 faceMap.insert(mfIndex, sfIndex);
                             }
 
-                            matchedFace = true;
+                            matchedFaces[faceI] = true;
 
                             break;
                         }
                     }
 
-                    if (matchedFace)
+                    if (matchedFaces[faceI])
                     {
                         break;
                     }
                 }
 
-                if (!matchedFace)
+                if (!matchedFaces[faceI])
                 {
                     writeVTK
                     (
@@ -6488,8 +6490,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         << abort(FatalError);
                 }
 
-                bool matchedEdge = false;
-
                 // Fetch edges connected to first slave point
                 const labelList& spEdges = pointEdges_[cE[0]];
 
@@ -6530,13 +6530,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             edgeMap.insert(meIndex, seIndex);
                         }
 
-                        matchedEdge = true;
+                        matchedEdges[edgeI] = true;
 
                         break;
                     }
                 }
 
-                if (!matchedEdge)
+                if (!matchedEdges[edgeI])
                 {
                     writeVTK
                     (
@@ -6921,8 +6921,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         );
                     }
 
-                    bool matchedFace = false;
-
                     // Fetch edges connected to first slave point
                     const labelList& spEdges = sMesh.pointEdges_[cF[0]];
 
@@ -6937,9 +6935,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
                         const labelList& seFaces = sMesh.edgeFaces_[seIndex];
 
-                        forAll(seFaces, faceI)
+                        forAll(seFaces, faceJ)
                         {
-                            label sfIndex = seFaces[faceI];
+                            label sfIndex = seFaces[faceJ];
 
                             if (sMesh.whichPatch(sfIndex) == -1)
                             {
@@ -6987,19 +6985,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                     faceMap.insert(mfIndex, sfIndex);
                                 }
 
-                                matchedFace = true;
+                                matchedFaces[faceI] = true;
 
                                 break;
                             }
                         }
 
-                        if (matchedFace)
+                        if (matchedFaces[faceI])
                         {
                             break;
                         }
                     }
 
-                    if (!matchedFace)
+                    if ((debug > 4) && !matchedFaces[faceI])
                     {
                         sMesh.writeVTK
                         (
@@ -7012,7 +7010,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             << mfIndex << " :: " << faces_[mfIndex]
                             << " using comparison face: " << cF
                             << " on proc: " << procIndices_[pI]
-                            << abort(FatalError);
+                            << endl;
                     }
                 }
             }
@@ -7169,8 +7167,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         }
                     }
 
-                    bool matchedEdge = false;
-
                     // Fetch edges connected to first slave point
                     const labelList& spEdges = sMesh.pointEdges_[cE[0]];
 
@@ -7212,13 +7208,13 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                 edgeMap.insert(meIndex, seIndex);
                             }
 
-                            matchedEdge = true;
+                            matchedEdges[edgeI] = true;
 
                             break;
                         }
                     }
 
-                    if (!matchedEdge)
+                    if (!matchedEdges[edgeI])
                     {
                         // Check if a coupling existed before
                         if (edgeMap.found(meIndex) && slaveMapPtr)
@@ -7244,12 +7240,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                                 rEdgeMap.erase(edgeMap[meIndex]);
                                 edgeMap.erase(meIndex);
 
-                                matchedEdge = true;
+                                matchedEdges[edgeI] = true;
                             }
                         }
                     }
 
-                    if (!matchedEdge)
+                    if ((debug > 4) && !matchedEdges[edgeI])
                     {
                         sMesh.writeVTK
                         (
@@ -7262,10 +7258,37 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             << meIndex << " :: " << edges_[meIndex]
                             << " using comparison edge: " << cE
                             << " on proc: " << procIndices_[pI]
-                            << abort(FatalError);
+                            << endl;
                     }
                 }
             }
+        }
+
+        // Ensure that all entities were matched
+        label nFailFace = 0, nFailEdge = 0;
+
+        forAll(matchedFaces, faceI)
+        {
+            if (!matchedFaces[faceI])
+            {
+                ++nFailFace;
+            }
+        }
+
+        forAll(matchedEdges, edgeI)
+        {
+            if (!matchedEdges[edgeI])
+            {
+                ++nFailEdge;
+            }
+        }
+
+        if (nFailFace || nFailEdge)
+        {
+            Pout<< " Failed to match all entities. " << nl
+                << "  Faces: " << nFailFace << nl
+                << "  Edges: " << nFailEdge << nl
+                << abort(FatalError);
         }
     }
 
