@@ -3568,6 +3568,10 @@ const changeMap dynamicTopoFvMesh::bisectEdge
             }
         }
 
+        // Prepare a checklist
+        boolList matchedFaces(checkFaces.size(), false);
+        boolList matchedEdges(checkEdges.size(), false);
+
         // Output check entities
         if (debug > 4)
         {
@@ -3714,8 +3718,6 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     continue;
                 }
 
-                bool matchedFace = false;
-
                 // Fetch edges connected to the slave point
                 const labelList& spEdges = sMesh.pointEdges_[slavePoint];
 
@@ -3730,9 +3732,9 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
                     const labelList& seFaces = sMesh.edgeFaces_[seIndex];
 
-                    forAll(seFaces, faceI)
+                    forAll(seFaces, faceJ)
                     {
-                        label sfIndex = seFaces[faceI];
+                        label sfIndex = seFaces[faceJ];
 
                         if (sMesh.whichPatch(sfIndex) == -1)
                         {
@@ -3779,19 +3781,19 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                                 faceMap.insert(mfIndex, sfIndex);
                             }
 
-                            matchedFace = true;
+                            matchedFaces[faceI] = true;
 
                             break;
                         }
                     }
 
-                    if (matchedFace)
+                    if (matchedFaces[faceI])
                     {
                         break;
                     }
                 }
 
-                if (!matchedFace)
+                if ((debug > 4) && !matchedFaces[faceI])
                 {
                     sMesh.writeVTK
                     (
@@ -3810,7 +3812,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                         << mfIndex << " :: " << mF
                         << " masterPatch: " << mfPatch
                         << " using comparison face: " << cF
-                        << abort(FatalError);
+                        << " on proc: " << procIndices_[pI]
+                        << endl;
                 }
             }
 
@@ -3842,14 +3845,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     continue;
                 }
 
-                bool matchedEdge = false;
-
                 // Fetch edges connected to the slave point
                 const labelList& spEdges = sMesh.pointEdges_[cE[0]];
 
-                forAll(spEdges, edgeI)
+                forAll(spEdges, edgeJ)
                 {
-                    label seIndex = spEdges[edgeI];
+                    label seIndex = spEdges[edgeJ];
 
                     const edge& sE = sMesh.edges_[seIndex];
 
@@ -3861,6 +3862,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                                 << " :: " << sE
                                 << " with meIndex: " << meIndex
                                 << " :: " << mE
+                                << " on proc: " << procIndices_[pI]
                                 << endl;
                         }
 
@@ -3884,13 +3886,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                             edgeMap.insert(meIndex, seIndex);
                         }
 
-                        matchedEdge = true;
+                        matchedEdges[edgeI] = true;
 
                         break;
                     }
                 }
 
-                if (!matchedEdge)
+                if (!matchedEdges[edgeI])
                 {
                     if (procCouple && !localCouple)
                     {
@@ -3909,12 +3911,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                                     << endl;
                             }
 
-                            matchedEdge = true;
+                            matchedEdges[edgeI] = true;
                         }
                     }
                 }
 
-                if (!matchedEdge)
+                if ((debug > 4) && !matchedEdges[edgeI])
                 {
                     sMesh.writeVTK
                     (
@@ -3932,7 +3934,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     Pout<< " Failed to match edge: "
                         << meIndex << " :: " << mE
                         << " using comparison edge: " << cE
-                        << abort(FatalError);
+                        << " on proc: " << procIndices_[pI]
+                        << endl;
                 }
             }
 
@@ -3945,6 +3948,33 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     coupleMap::BISECTION
                 );
             }
+        }
+
+        // Ensure that all entities were matched
+        label nFailFace = 0, nFailEdge = 0;
+
+        forAll(matchedFaces, faceI)
+        {
+            if (!matchedFaces[faceI])
+            {
+                ++nFailFace;
+            }
+        }
+
+        forAll(matchedEdges, edgeI)
+        {
+            if (!matchedEdges[edgeI])
+            {
+                ++nFailEdge;
+            }
+        }
+
+        if (nFailFace || nFailEdge)
+        {
+            Pout<< " Failed to match all entities. " << nl
+                << "  Faces: " << nFailFace << nl
+                << "  Edges: " << nFailEdge << nl
+                << abort(FatalError);
         }
     }
 

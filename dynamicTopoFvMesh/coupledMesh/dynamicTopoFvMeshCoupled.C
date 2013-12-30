@@ -7091,7 +7091,8 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
               + Foam::name(Pstream::myProcNo())
               + "to"
               + Foam::name(proc),
-                identity(cMap.nEntities(coupleMap::CELL))
+                identity(cMap.nEntities(coupleMap::CELL)),
+                3, false, true
             );
         }
 
