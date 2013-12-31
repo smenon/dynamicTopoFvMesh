@@ -1730,16 +1730,21 @@ void dynamicTopoFvMesh::reOrderMesh
         {
             if (Pstream::master())
             {
-                for (label i = Pstream::nProcs()-1; i >= 1; i--)
+                for (label i = Pstream::nProcs() - 1; i >= 1; i--)
                 {
+                    // Notify slave
                     meshOps::pWrite(i, i);
-                    sleep(0.25);
+
+                    // Wait for response from slave
+                    label j = 0;
+                    meshOps::pRead(i, j);
                 }
             }
             else
             {
+                // Wait for master
                 label i = 0;
-                meshOps::pRead(0, i);
+                meshOps::pRead(Pstream::masterNo(), i);
             }
         }
 
@@ -1783,6 +1788,12 @@ void dynamicTopoFvMesh::reOrderMesh
         }
 
         Pout<< "=================" << endl;
+
+        // Notify master
+        if (Pstream::parRun() && !Pstream::master())
+        {
+            meshOps::pWrite(Pstream::masterNo(), Pstream::myProcNo());
+        }
 
         bool checkPoint = false;
         reduce(checkPoint, andOp<bool>());

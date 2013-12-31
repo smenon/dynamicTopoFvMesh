@@ -289,15 +289,15 @@ inline pointField& coupleMap::moveOldPoints() const
 }
 
 
-inline Map<labelList>& coupleMap::procPointMap() const
+inline Map<labelList>& coupleMap::subMeshPointMap() const
 {
-    return procPointMap_;
+    return subMeshPointMap_;
 }
 
 
-inline Map<labelList>& coupleMap::procEdgeMap() const
+inline Map<labelList>& coupleMap::subMeshEdgeMap() const
 {
-    return procEdgeMap_;
+    return subMeshEdgeMap_;
 }
 
 

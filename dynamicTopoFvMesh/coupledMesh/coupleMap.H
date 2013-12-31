@@ -173,8 +173,8 @@ private:
         mutable labelList cellMap_;
 
         // Processor point and edge mapping
-        mutable Map<labelList> procPointMap_;
-        mutable Map<labelList> procEdgeMap_;
+        mutable Map<labelList> subMeshPointMap_;
+        mutable Map<labelList> subMeshEdgeMap_;
 
         //- Demand-driven connectivity data.
         mutable edgeList* edgesPtr_;
@@ -344,8 +344,8 @@ public:
         inline pointField& moveNewPoints() const;
         inline pointField& moveOldPoints() const;
 
-        inline Map<labelList>& procPointMap() const;
-        inline Map<labelList>& procEdgeMap() const;
+        inline Map<labelList>& subMeshPointMap() const;
+        inline Map<labelList>& subMeshEdgeMap() const;
 
         void pushOperation
         (
