@@ -530,8 +530,8 @@ void coupleMap::clearMaps() const
     faceMap_.clear();
     cellMap_.clear();
 
-    procPointMap_.clear();
-    procEdgeMap_.clear();
+    subMeshPointMap_.clear();
+    subMeshEdgeMap_.clear();
 
     forAll(entityMap_, mapI)
     {

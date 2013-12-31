@@ -1523,8 +1523,10 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 // Configure points which need to be inserted
                 forAll(sFace, pointI)
                 {
+                    label sFacePoint = sFace[pointI];
+
                     // Skip if added already
-                    if (pointsToInsert[pI].found(sFace[pointI]))
+                    if (pointsToInsert[pI].found(sFacePoint))
                     {
                         continue;
                     }
@@ -1532,11 +1534,11 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     // Check for coupled points
                     pointsToInsert[pI].insert
                     (
-                        sFace[pointI],
+                        sFacePoint,
                         cMap.findMaster
                         (
                             coupleMap::POINT,
-                            sFace[pointI]
+                            sFacePoint
                         )
                     );
                 }
@@ -1882,62 +1884,202 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
+    // Specify a merge tolerance for insertion points
+    scalar mergeTol =
+    (
+        is2D() ? 0.0 : geomMatchTol_ * magSqr(edges_[mIndex].vec(points_))
+    );
+
     // Check for point / edge processor connections
     if (is3D())
     {
+        const label myProcNo = Pstream::myProcNo();
+
         forAll(procIndices_, pI)
         {
             const Map<label>& cEdges = edgesToInsert[pI];
             const coupleMap& cMap = recvMeshes_[pI].map();
-            const Map<labelList>& pEdgeMap = cMap.procEdgeMap();
-            const Map<labelList>& pPointMap = cMap.procPointMap();
+            const Map<labelList>& pEdgeMap = cMap.subMeshEdgeMap();
+            const Map<labelList>& pPointMap = cMap.subMeshPointMap();
             const dynamicTopoFvMesh& sMesh = recvMeshes_[pI].subMesh();
+
+            // Some points may have been inserted by a prior
+            // operation involving disconnected entities.
+            // Check if points need to be truly inserted.
+            Map<label>& cPoints = pointsToInsert[pI];
+
+            forAllIter(Map<label>, cPoints, pIter)
+            {
+                if (pIter() > -1)
+                {
+                    continue;
+                }
+
+                label cSp = pIter.key();
+
+                Map<labelList>::const_iterator pIt = pPointMap.find(cSp);
+
+                if (pIt == pPointMap.end())
+                {
+                    continue;
+                }
+
+                const point& pointI = sMesh.points_[pIt.key()];
+
+                bool foundMaster = false;
+                const labelList& procs = pIt();
+
+                forAll(procs, procJ)
+                {
+                    label pJ = -1, nProcNo = procs[procJ];
+
+                    if
+                    (
+                        (nProcNo == procIndices_[pI]) ||
+                        ((pJ = findIndex(procIndices_, nProcNo)) == -1)
+                    )
+                    {
+                        continue;
+                    }
+
+                    // Fetch map from the other processor,
+                    // and check if a mapping already exists
+                    const coupleMap& cMapJ = recvMeshes_[pJ].map();
+                    const Map<labelList>& pMapJ = cMapJ.subMeshPointMap();
+                    const dynamicTopoFvMesh& sMeshJ = recvMeshes_[pJ].subMesh();
+
+                    forAllConstIter(Map<labelList>, pMapJ, pjIter)
+                    {
+                        label pointMaster =
+                        (
+                            cMapJ.findMaster
+                            (
+                                coupleMap::POINT,
+                                pjIter.key()
+                            )
+                        );
+
+                        if (pointMaster == -1)
+                        {
+                            continue;
+                        }
+
+                        const point& pointJ = sMeshJ.points_[pjIter.key()];
+
+                        if (magSqr(pointI - pointJ) < mergeTol)
+                        {
+                            if (debug > 2)
+                            {
+                                Pout<< " Using mapped point: " << pjIter.key()
+                                    << " :: " << pointJ
+                                    << " procs: " << pjIter()
+                                    << " master: " << pointMaster
+                                    << endl;
+                            }
+
+                            // Assign to existing master point
+                            pIter() = pointMaster;
+
+                            // Update maps for the point
+                            cMap.mapSlave
+                            (
+                                coupleMap::POINT,
+                                pIter(), pIter.key()
+                            );
+
+                            cMap.mapMaster
+                            (
+                                coupleMap::POINT,
+                                pIter.key(), pIter()
+                            );
+
+                            foundMaster = true;
+                            break;
+                        }
+                    }
+
+                    if (foundMaster)
+                    {
+                        break;
+                    }
+                }
+            }
 
             forAllConstIter(Map<label>, cEdges, eIter)
             {
                 label cSe = eIter.key();
 
-                if (pEdgeMap.found(cSe))
+                Map<labelList>::const_iterator eIt = pEdgeMap.find(cSe);
+
+                if (eIt != pEdgeMap.end())
                 {
-                    if (debug > 3)
+                    const labelList& procs = eIt();
+
+                    forAll(procs, procI)
                     {
-                        Pout<< nl << nl
-                            << " Edge: " << cSe
-                            << " :: " << sMesh.edges_[cSe]
-                            << " is talking to processors: "
-                            << pEdgeMap[cSe] << endl;
+                        label nProcNo = procs[procI];
+
+                        if (priority(nProcNo, greaterEqOp<label>(), myProcNo))
+                        {
+                            continue;
+                        }
+
+                        if (debug > 3)
+                        {
+                            Pout<< nl << nl
+                                << " Edge: " << cSe
+                                << " :: " << sMesh.edges_[cSe]
+                                << " is talking to processors: " << procs
+                                << " so bailing out."
+                                << endl;
+                        }
+
+                        map.type() = -2;
+
+                        return map;
                     }
-
-                    map.type() = -2;
-
-                    return map;
                 }
 
                 const edge& checkEdge = sMesh.edges_[cSe];
 
-                bool found0 = pPointMap.found(checkEdge[0]);
-                bool found1 = pPointMap.found(checkEdge[1]);
-
-                if (found0 || found1)
+                forAll(checkEdge, pointI)
                 {
-                    if (debug > 3)
+                    label cSp = checkEdge[pointI];
+
+                    Map<labelList>::const_iterator pIt = pPointMap.find(cSp);
+
+                    if (pIt == pPointMap.end())
                     {
-                        Pout<< nl << nl
-                            << " Points: " << nl
-                            << "  Edge[0]: " << checkEdge[0]
-                            << "  Edge[1]: " << checkEdge[1]
-                            << nl
-                            << " Processor conflicts: " << nl
-                            << "  Edge[0]: "
-                            << (found0 ? pPointMap[checkEdge[0]] : labelList(0))
-                            << "  Edge[1]: "
-                            << (found1 ? pPointMap[checkEdge[1]] : labelList(0))
-                            << endl;
+                        continue;
                     }
 
-                    map.type() = -2;
+                    const labelList& procs = pIt();
 
-                    return map;
+                    forAll(procs, procI)
+                    {
+                        label nProcNo = procs[procI];
+
+                        if (priority(nProcNo, greaterEqOp<label>(), myProcNo))
+                        {
+                            continue;
+                        }
+
+                        if (debug > 3)
+                        {
+                            Pout<< nl << nl
+                                << " Points: " << nl
+                                << "  Edge[0]: " << checkEdge[0] << nl
+                                << "  Edge[1]: " << checkEdge[1] << nl
+                                << " Processor conflict: " << nl
+                                << "  Point: " << cSp << nl
+                                << "  Processors: " << procs
+                                << endl;
+                        }
+
+                        map.type() = -2;
+
+                        return map;
+                    }
                 }
             }
         }
@@ -2138,13 +2280,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
-    // Loop through all insertion points, and merge if necessary
-    scalar mergeTol =
-    (
-        is2D() ? 0.0 : geomMatchTol_ * mag(edges_[mIndex].vec(points_))
-    );
-
-    // Insert all points
+    // Insert all points, with merging if necessary
     forAll(pointsToInsert, pI)
     {
         Map<label>& procPointMapI = pointsToInsert[pI];
@@ -2182,7 +2318,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 {
                     const point& pointJ = meshJ.points_[pItJ.key()];
 
-                    if (mag(pointI - pointJ) < mergeTol)
+                    if (magSqr(pointI - pointJ) < mergeTol)
                     {
                         if (pItJ() == -1)
                         {
@@ -2398,7 +2534,15 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                             }
 
                             edgesToInsert[pI][seIndex] = meIndex;
-                            edgesToConvert[pI][seIndex] = meIndex;
+
+                            if (edgesToConvert[pI].found(seIndex))
+                            {
+                                edgesToConvert[pI][seIndex] = meIndex;
+                            }
+                            else
+                            {
+                                edgesToConvert[pI].insert(seIndex, meIndex);
+                            }
                         }
                     }
                 }
@@ -4544,7 +4688,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
             if (debug > 3)
             {
-                Pout<< " Op tranfer:"
+                Pout<< " Op transfer:"
                     << " Receiving from [" << proc << "]::"
                     << " nEntities: " << nEntities
                     << " nMovePoints: " << nMovePoints
@@ -4603,7 +4747,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
             if (debug > 3)
             {
-                Pout<< " Op tranfer:"
+                Pout<< " Op transfer:"
                     << " Sending to [" << proc << "]:: "
                     << " nEntities: " << nEntities << nl
                     << "  entityIndices: " << cMap.entityIndices() << nl
@@ -7490,8 +7634,11 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
             }
 
             // Prepare processor point and edge maps
-            Map<labelList>& pEdgeMap = cMap.procEdgeMap();
-            Map<labelList>& pPointMap = cMap.procPointMap();
+            //  - For each point / edge on the subMesh, create
+            //    a list of processors (other than this one)
+            //    that are connected to it
+            Map<labelList>& pEdgeMap = cMap.subMeshEdgeMap();
+            Map<labelList>& pPointMap = cMap.subMeshPointMap();
 
             const dynamicTopoFvMesh& sMesh = rPM.subMesh();
             const polyBoundaryMesh& bdy = sMesh.boundaryMesh();
@@ -7511,7 +7658,7 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 label neiProcNo = pp.neighbProcNo();
                 label myProcNo = Pstream::myProcNo();
 
-                if (priority(neiProcNo, greaterEqOp<label>(), myProcNo))
+                if (neiProcNo == myProcNo)
                 {
                     continue;
                 }
