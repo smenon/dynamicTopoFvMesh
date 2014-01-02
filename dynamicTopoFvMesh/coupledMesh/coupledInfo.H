@@ -200,12 +200,12 @@ public:
         };
 
         // Subset geometric field
-        template<class GeomField>
+        template <class GeomField>
         tmp<GeomField>
         subSetField(const GeomField& field) const;
 
         // Subset geometric fields from registry to output stream
-        template<class GeomField>
+        template <class GeomField>
         void send
         (
             const wordList& fieldNames,
@@ -213,13 +213,14 @@ public:
             OSstream& strStream
         ) const;
 
-        // Set geometric field pointer from input dictionary
-        template<class Type, template<class> class PatchField, class Mesh>
+        // Set geometric field pointers from input dictionary
+        template <class GeomField>
         void setField
         (
             const wordList& fieldNames,
             const dictionary& fieldDicts,
-            PtrList<GeometricField<Type, PatchField, Mesh> >& fields
+            const label internalSize,
+            PtrList<GeomField>& fields
         ) const;
 
         // Resize map for individual field

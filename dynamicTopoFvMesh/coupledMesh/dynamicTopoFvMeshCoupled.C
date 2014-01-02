@@ -8242,25 +8242,25 @@ void dynamicTopoFvMesh::syncFieldTransfers
         // Construct dictionary from stream
         dictionary dict(stream[pI]);
 
-        // Set field pointers
-        cInfo.setField(names[0], dict.subDict(types[0]), vsF[pI]);
-        cInfo.setField(names[1], dict.subDict(types[1]), vvF[pI]);
-        cInfo.setField(names[2], dict.subDict(types[2]), vsptF[pI]);
-        cInfo.setField(names[3], dict.subDict(types[3]), vsytF[pI]);
-        cInfo.setField(names[4], dict.subDict(types[4]), vtF[pI]);
-
-        cInfo.setField(names[5], dict.subDict(types[5]), ssF[pI]);
-        cInfo.setField(names[6], dict.subDict(types[6]), svF[pI]);
-        cInfo.setField(names[7], dict.subDict(types[7]), ssptF[pI]);
-        cInfo.setField(names[8], dict.subDict(types[8]), ssytF[pI]);
-        cInfo.setField(names[9], dict.subDict(types[9]), stF[pI]);
-
         // Count the number of additional entities
         const coupleMap& cMap = cInfo.map();
 
         // Fetch size from subMesh
         label nCells = cMap.nEntities(coupleMap::CELL);
         label nIntFaces = cMap.nEntities(coupleMap::INTERNAL_FACE);
+
+        // Set field pointers
+        cInfo.setField(names[0], dict.subDict(types[0]), nCells, vsF[pI]);
+        cInfo.setField(names[1], dict.subDict(types[1]), nCells, vvF[pI]);
+        cInfo.setField(names[2], dict.subDict(types[2]), nCells, vsptF[pI]);
+        cInfo.setField(names[3], dict.subDict(types[3]), nCells, vsytF[pI]);
+        cInfo.setField(names[4], dict.subDict(types[4]), nCells, vtF[pI]);
+
+        cInfo.setField(names[5], dict.subDict(types[5]), nIntFaces, ssF[pI]);
+        cInfo.setField(names[6], dict.subDict(types[6]), nIntFaces, svF[pI]);
+        cInfo.setField(names[7], dict.subDict(types[7]), nIntFaces, ssptF[pI]);
+        cInfo.setField(names[8], dict.subDict(types[8]), nIntFaces, ssytF[pI]);
+        cInfo.setField(names[9], dict.subDict(types[9]), nIntFaces, stF[pI]);
 
         // Set rmap for this processor
         irvMaps[pI] = (labelField(identity(nCells)) + nTotalCells);
