@@ -2,7 +2,7 @@
 An implementation of parallel, adaptive, simplical remeshing for OpenFOAM.
 
 ## Copyright Information
-    Copyright (C) 2007-2013
+    Copyright (C) 2007-2014
     Sandeep Menon
     University of Massachusetts Amherst.
 

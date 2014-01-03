@@ -2,7 +2,7 @@ dynamicTopoFvMesh - An implementation of parallel, adaptive,
                     simplical remeshing for OpenFOAM.
 
 Copyright Information
-    Copyright (C) 2007-2013 Sandeep Menon, University of Massachusetts Amherst.
+    Copyright (C) 2007-2014 Sandeep Menon, University of Massachusetts Amherst.
 
 License
     This program is free software: you can redistribute it and/or modify

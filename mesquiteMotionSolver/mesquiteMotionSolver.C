@@ -2325,6 +2325,13 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
         }
     }
 
+    // Reset buffers
+    forAll(procIndices_, pI)
+    {
+        sendSurfFields_[pI] = vector::zero;
+        recvSurfFields_[pI] = vector::zero;
+    }
+
     // Fix boundary conditions
     transferBuffers(bdyMarker);
 
