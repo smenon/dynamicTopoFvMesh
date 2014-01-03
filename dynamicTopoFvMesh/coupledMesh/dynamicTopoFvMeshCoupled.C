@@ -1355,9 +1355,9 @@ void dynamicTopoFvMesh::moveCoupledSubMeshes()
         mesh.resetPrimitives
         (
             xferCopy(rcMap.oldPointBuffer()),
-            Xfer<faceList>::null(),
-            Xfer<labelList>::null(),
-            Xfer<labelList>::null(),
+            (*reinterpret_cast<Xfer<faceList>*>(0)),
+            (*reinterpret_cast<Xfer<labelList>*>(0)),
+            (*reinterpret_cast<Xfer<labelList>*>(0)),
             patchSizes,
             patchStarts,
             false
