@@ -2111,7 +2111,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
     // Check to ensure that field sizes match
     labelList nProcSize(procIndices_.size(), -1);
 
-    forAll(sendSurfPointMap_, pI)
+    forAll(procIndices_, pI)
     {
         // Send size to neighbour
         parWrite(procIndices_[pI], sendSurfPointMap_[pI].size());
@@ -2205,7 +2205,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
     const vector outsideBoxMax = box.max() + vector::one;
 
     // Send and receive points for geometric match
-    forAll(sendSurfPointMap_, pI)
+    forAll(procIndices_, pI)
     {
         label proc = procIndices_[pI];
 
@@ -2266,7 +2266,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
     // Set up a reversePointMap for mismatches
     labelListList reversePointMap(procIndices_.size());
 
-    forAll(sendSurfPointMap_, pI)
+    forAll(procIndices_, pI)
     {
         // Fetch references
         vectorField& recvField = recvSurfFields_[pI];
@@ -2351,6 +2351,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
             // Skip mismatches
             if (pointMap[pIter()] < 0)
             {
+                rspMap.erase(pIter);
                 continue;
             }
 
