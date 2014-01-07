@@ -392,7 +392,6 @@ void coupledInfo<MeshType>::setField
     PtrList<GeomField>& fields
 ) const
 {
-    typedef typename GeomField::Mesh GeoMesh;
     typedef typename GeomField::InternalField InternalField;
     typedef typename GeomField::PatchFieldType PatchFieldType;
     typedef typename GeomField::GeometricBoundaryField GeomBdyFieldType;

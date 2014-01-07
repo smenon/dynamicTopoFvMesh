@@ -41,9 +41,6 @@ void topoMapper::storeGradients
 ) const
 {
     // Define a few typedefs for convenience
-    typedef typename outerProduct<vector, Type>::type gCmptType;
-    typedef GeometricField<gCmptType, fvPatchField, volMesh> gVolType;
-
     typedef GeometricField<Type, fvPatchField, volMesh> volType;
     typedef const GeometricField<Type, fvPatchField, volMesh> constVolType;
 
