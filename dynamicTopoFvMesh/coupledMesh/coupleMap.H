@@ -74,43 +74,43 @@ public:
         enum entityType
         {
             // Buffers and sizes
-            POINT = 0,
-            EDGE = 1,
-            FACE = 2,
+            POINT         = 0,
+            EDGE          = 1,
+            FACE          = 2,
             // Sizes only
-            CELL = 3,
-            MAX_ENTITIES = 4,
+            CELL          = 3,
+            MAX_ENTITIES  = 4,
             INTERNAL_EDGE = 4,
             INTERNAL_FACE = 5,
-            SHARED_POINT = 6,
-            GLOBAL_POINT = 7,
-            NFE_SIZE = 8,
-            NBDY = 9,
-            MAX_SIZES = 10,
+            SHARED_POINT  = 6,
+            GLOBAL_POINT  = 7,
+            NFE_SIZE      = 8,
+            NBDY          = 9,
+            MAX_SIZES     = 10,
             // Buffers only
-            OWNER = 3,
-            NEIGHBOUR = 4,
-            FACE_EDGE = 5,
-            NFE_BUFFER = 6,
-            FACE_STARTS = 7,
-            FACE_SIZES = 8,
-            EDGE_STARTS = 9,
-            EDGE_SIZES = 10,
-            PATCH_ID = 11,
-            MAX_BUFFERS = 12
+            OWNER         = 3,
+            NEIGHBOUR     = 4,
+            FACE_EDGE     = 5,
+            NFE_BUFFER    = 6,
+            FACE_STARTS   = 7,
+            FACE_SIZES    = 8,
+            EDGE_STARTS   = 9,
+            EDGE_SIZES    = 10,
+            PATCH_ID      = 11,
+            MAX_BUFFERS   = 12
         };
 
         //- Enumerants for operations
         enum opType
         {
-            BISECTION = 0,
-            COLLAPSE_FIRST = 1,
-            COLLAPSE_SECOND = 2,
+            BISECTION         = 0,
+            COLLAPSE_FIRST    = 1,
+            COLLAPSE_SECOND   = 2,
             COLLAPSE_MIDPOINT = 3,
-            REMOVE_CELL = 4,
-            MOVE_POINT = 5,
-            CONVERT_PATCH = 6,
-            CONVERT_PHYSICAL = 7,
+            REMOVE_CELL       = 4,
+            MOVE_POINT        = 5,
+            CONVERT_PATCH     = 6,
+            CONVERT_PHYSICAL  = 7,
             INVALID
         };
 

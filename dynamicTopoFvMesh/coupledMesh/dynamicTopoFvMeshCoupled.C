@@ -4820,7 +4820,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
     forAll(procIndices_, pI)
     {
-        const coupleMap& cMap = sendMeshes_[pI].map();
+        const coupleMap& cMap = recvMeshes_[pI].map();
 
         if (cMap.patchIndex() >= boundary.size())
         {
@@ -4849,7 +4849,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
     Map<label> addedProcPatches;
 
-    for (label proc = 0; proc < Pstream::myProcNo(); proc++)
+    for (label proc = 0; proc < Pstream::nProcs(); proc++)
     {
         if (createPatchOrders[proc])
         {
@@ -7738,12 +7738,23 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
         return -2;
     }
 
+    // Find index in list of processors
+    label pI = findIndex(procIndices_, proc);
+
+    // Check if an entry already exists
+    if (pI > -1)
+    {
+        label patchIndex = sendMeshes_[pI].map().patchIndex();
+
+        if (patchIndex > -1)
+        {
+            return patchIndex;
+        }
+    }
+
     // Get the new patch index,
     // and increment the number of patches
     label patchID = nPatches_++;
-
-    // Find index in list of processors
-    label pI = findIndex(procIndices_, proc);
 
     // Set the new patch index in patchMaps
     if (isSubMesh_)
@@ -7756,7 +7767,7 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
             sendMeshes_.setSize(pI + 1);
         }
 
-        // Create a basic entry
+        // Create a basic entry on the subMesh
         procIndices_[pI] = proc;
 
         sendMeshes_.set
