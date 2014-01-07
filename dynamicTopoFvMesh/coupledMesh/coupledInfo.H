@@ -59,25 +59,30 @@ class fvBoundaryMesh;
 template <class MeshType>
 class coupledInfo
 {
-    // Reference to the parent mesh
-    const MeshType& mesh_;
 
-    // Auto pointer to a subMesh
-    autoPtr<MeshType> subMesh_;
+    // Private data
 
-    // Flag to determine whether maps have been built.
-    bool builtMaps_;
+        // Reference to the parent mesh
+        const MeshType& mesh_;
 
-    // For locally coupled patches,
-    // specify a master / slave index
-    coupleMap map_;
+        // Auto pointer to a subMesh
+        autoPtr<MeshType> subMesh_;
 
-    // Zone IDs for patches associated with faceZones
-    label masterFaceZone_;
-    label slaveFaceZone_;
+        // Flag to determine whether maps have been built.
+        bool builtMaps_;
 
-    // Disallow default bitwise assignment
-    inline void operator=(const coupledInfo&);
+        // For locally coupled patches,
+        // specify a master / slave index
+        coupleMap map_;
+
+        // Zone IDs for patches associated with faceZones
+        label masterFaceZone_;
+        label slaveFaceZone_;
+
+    // Private member functions
+
+        // Disallow default bitwise assignment
+        inline void operator=(const coupledInfo&);
 
 public:
 
