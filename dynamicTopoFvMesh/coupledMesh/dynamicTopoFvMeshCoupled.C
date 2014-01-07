@@ -2816,6 +2816,11 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         break;
                     }
                 }
+
+                if (foundDuplicate)
+                {
+                    break;
+                }
             }
 
             // Face was inserted before, so don't insert again
