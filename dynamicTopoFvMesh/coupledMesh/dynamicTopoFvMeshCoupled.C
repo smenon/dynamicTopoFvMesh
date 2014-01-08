@@ -4815,7 +4815,7 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
 
     const polyBoundaryMesh& boundary = boundaryMesh();
 
-    labelList createPatchOrders(Pstream::nProcs(), 0);
+    labelList createPatchOrders(procIndices_.size(), 0);
 
     forAll(procIndices_, pI)
     {
@@ -4824,33 +4824,37 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
         if (cMap.patchIndex() >= boundary.size())
         {
             // This processor needs a new patch talking to me
-            createPatchOrders[procIndices_[pI]] = 1;
+            createPatchOrders[pI] = 1;
         }
     }
 
     // Send / recv create patch orders, if any
-    for (label proc = 0; proc < Pstream::nProcs(); proc++)
+    forAll(procIndices_, pI)
     {
-        if (proc == Pstream::myProcNo())
-        {
-            continue;
-        }
+        label proc = procIndices_[pI];
 
         if (priority(proc, greaterOp<label>(), Pstream::myProcNo()))
         {
-            meshOps::pWrite(proc, createPatchOrders[proc]);
+            // Non-blocking send to processor
+            meshOps::pWrite(proc, createPatchOrders[pI], false);
         }
         else
         {
-            meshOps::pRead(proc, createPatchOrders[proc]);
+            // Non-blocking receive from processor
+            meshOps::pRead(proc, createPatchOrders[pI], false);
         }
     }
 
+    // Wait for all transfers to complete.
+    meshOps::waitForBuffers();
+
     Map<label> addedProcPatches;
 
-    for (label proc = 0; proc < Pstream::nProcs(); proc++)
+    forAll(procIndices_, pI)
     {
-        if (createPatchOrders[proc])
+        label proc = procIndices_[pI];
+
+        if (createPatchOrders[pI])
         {
             // Create a new processor patch
             addedProcPatches.insert
@@ -4860,9 +4864,6 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
             );
         }
     }
-
-    // Wait for all transfers to complete.
-    meshOps::waitForBuffers();
 
     // Buffer for cell-removal
     DynamicList<label> rCellList(10);

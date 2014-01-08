@@ -236,7 +236,8 @@ namespace meshOps
     inline void pWrite
     (
         const label toID,
-        const label& data
+        const label& data,
+        bool blocking = true
     );
 
     // Parallel send (for fixed lists)
@@ -259,7 +260,8 @@ namespace meshOps
     inline void pRead
     (
         const label fromID,
-        label& data
+        label& data,
+        bool blocking = true
     );
 
     // Parallel receive (for fixed lists)
