@@ -2136,7 +2136,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         // Create patch on subMesh
         dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
 
-        mesh.createProcessorPatch(Pstream::myProcNo());
+        slaveConvertPatch[pI] = mesh.createProcessorPatch(Pstream::myProcNo());
     }
 
     // Build a list of mapping entities on this processor
