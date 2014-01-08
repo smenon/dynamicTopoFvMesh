@@ -463,12 +463,13 @@ inline bool pointInTriFace
 inline void pWrite
 (
     const label toID,
-    const label& data
+    const label& data,
+    bool blocking
 )
 {
     OPstream::write
     (
-        Pstream::blocking,
+        (blocking ? Pstream::blocking : Pstream::nonBlocking),
         toID,
         reinterpret_cast<const char*>(&data),
         sizeof(label)
@@ -480,12 +481,13 @@ inline void pWrite
 inline void pRead
 (
     const label fromID,
-    label& data
+    label& data,
+    bool blocking
 )
 {
     IPstream::read
     (
-        Pstream::blocking,
+        (blocking ? Pstream::blocking : Pstream::nonBlocking),
         fromID,
         reinterpret_cast<char*>(&data),
         sizeof(label)
