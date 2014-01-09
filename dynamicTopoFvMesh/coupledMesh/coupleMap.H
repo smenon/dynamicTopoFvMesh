@@ -171,6 +171,7 @@ private:
         // Addressing for field mapping
         mutable labelList faceMap_;
         mutable labelList cellMap_;
+        mutable labelList internalFaceMap_;
 
         // Processor point and edge mapping
         mutable Map<labelList> subMeshPointMap_;
@@ -378,6 +379,7 @@ public:
 
         const labelList& faceMap() const;
         const labelList& cellMap() const;
+        const labelList& internalFaceMap() const;
 
         void transferMaps
         (

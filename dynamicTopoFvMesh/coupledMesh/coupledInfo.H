@@ -207,7 +207,11 @@ public:
         // Subset geometric field
         template <class GeomField>
         tmp<GeomField>
-        subSetField(const GeomField& field) const;
+        subSetField
+        (
+            const GeomField& field,
+            const labelList& internalMapper
+        ) const;
 
         // Subset geometric fields from registry to output stream
         template <class GeomField>
@@ -215,6 +219,7 @@ public:
         (
             const wordList& fieldNames,
             const word& fieldType,
+            const labelList& internalMapper,
             OSstream& strStream
         ) const;
 
