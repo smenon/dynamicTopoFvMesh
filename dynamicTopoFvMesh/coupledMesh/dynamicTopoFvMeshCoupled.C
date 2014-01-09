@@ -8092,6 +8092,17 @@ void dynamicTopoFvMesh::resetBoundaries()
 }
 
 
+// Convenience macro for field sub-setting
+#define sendFieldsOfType(type, info, n, t, off, map, str)                      \
+{                                                                              \
+    info.send<type##ScalarField>(n[0 + off], t[0 + off], map, str);            \
+    info.send<type##VectorField>(n[1 + off], t[1 + off], map, str);            \
+    info.send<type##SphericalTensorField>(n[2 + off], t[2 + off], map, str);   \
+    info.send<type##SymmTensorField>(n[3 + off], t[3 + off], map, str);        \
+    info.send<type##TensorField>(n[4 + off], t[4 + off], map, str);            \
+}
+
+
 // Initialize subMesh field transfers for mapping
 void dynamicTopoFvMesh::initFieldTransfers
 (
@@ -8237,18 +8248,14 @@ void dynamicTopoFvMesh::initFieldTransfers
         stream.set(pI, new OStringStream(IOstream::BINARY));
 
         // Subset and send volFields to stream
-        cInfo.send<volScalarField>(names[0], types[0], stream[pI]);
-        cInfo.send<volVectorField>(names[1], types[1], stream[pI]);
-        cInfo.send<volSphericalTensorField>(names[2], types[2], stream[pI]);
-        cInfo.send<volSymmTensorField>(names[3], types[3], stream[pI]);
-        cInfo.send<volTensorField>(names[4], types[4], stream[pI]);
+        const labelList& cMap = cInfo.map().cellMap();
+
+        sendFieldsOfType(vol, cInfo, names, types, 0, cMap, stream[pI]);
 
         // Subset and send surfaceFields to stream
-        cInfo.send<surfaceScalarField>(names[5], types[5], stream[pI]);
-        cInfo.send<surfaceVectorField>(names[6], types[6], stream[pI]);
-        cInfo.send<surfaceSphericalTensorField>(names[7], types[7], stream[pI]);
-        cInfo.send<surfaceSymmTensorField>(names[8], types[8], stream[pI]);
-        cInfo.send<surfaceTensorField>(names[9], types[9], stream[pI]);
+        const labelList& fMap = cInfo.map().internalFaceMap();
+
+        sendFieldsOfType(surface, cInfo, names, types, 5, fMap, stream[pI]);
 
         // Size up buffers and fill contents
         string contents = stream[pI].str();

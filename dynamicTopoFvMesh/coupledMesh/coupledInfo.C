@@ -26,8 +26,8 @@ License
 
 #include "Time.H"
 #include "coupledInfo.H"
-#include "emptyFvPatchFields.H"
-#include "emptyFvsPatchFields.H"
+#include "emptyPolyPatch.H"
+#include "processorPolyPatch.H"
 #include "fixedValueFvPatchFields.H"
 
 namespace Foam
@@ -232,7 +232,11 @@ label coupledInfo<MeshType>::slaveFaceZone() const
 template <class MeshType>
 template <class GeomField>
 tmp<GeomField>
-coupledInfo<MeshType>::subSetField(const GeomField& f) const
+coupledInfo<MeshType>::subSetField
+(
+    const GeomField& f,
+    const labelList& internalMapper
+) const
 {
     typedef typename GeomField::InternalField InternalField;
     typedef typename GeomField::PatchFieldType PatchFieldType;
@@ -240,7 +244,7 @@ coupledInfo<MeshType>::subSetField(const GeomField& f) const
     typedef typename GeomField::DimensionedInternalField DimInternalField;
 
     // Create and map the internal-field values
-    InternalField internalField(f.internalField(), map().cellMap());
+    InternalField internalField(f.internalField(), internalMapper);
 
     // Create and map the patch field values
     label nPatches = subMesh().boundary().size();
@@ -249,6 +253,7 @@ coupledInfo<MeshType>::subSetField(const GeomField& f) const
     // Define patch type names, assumed to be
     // common for volume and surface fields
     word emptyType(emptyPolyPatch::typeName);
+    word processorType(processorPolyPatch::typeName);
 
     // Create dummy types for initial field creation
     forAll(patchFields, patchI)
@@ -324,6 +329,20 @@ coupledInfo<MeshType>::subSetField(const GeomField& f) const
             );
         }
         else
+        if (isA<processorPolyPatch>(subMesh().boundary()[patchI].patch()))
+        {
+            bf.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    processorType,
+                    subMesh().boundary()[patchI],
+                    subFld().dimensionedInternalField()
+                )
+            );
+        }
+        else
         {
             bf.set
             (
@@ -350,6 +369,7 @@ void coupledInfo<MeshType>::send
 (
     const wordList& fieldNames,
     const word& fieldType,
+    const labelList& internalMapper,
     OSstream& strStream
 ) const
 {
@@ -365,7 +385,7 @@ void coupledInfo<MeshType>::send
         const GeomField& fld = db.lookupObject<GeomField>(fieldNames[i]);
 
         // Subset the field
-        tmp<GeomField> tsubFld = subSetField(fld);
+        tmp<GeomField> tsubFld = subSetField(fld, internalMapper);
 
         // Send field subset through stream
         strStream
@@ -403,6 +423,7 @@ void coupledInfo<MeshType>::setField
     // Define patch type names, assumed to be
     // common for volume and surface fields
     word emptyType(emptyPolyPatch::typeName);
+    word processorType(processorPolyPatch::typeName);
 
     forAll(fieldNames, i)
     {
@@ -495,6 +516,20 @@ void coupledInfo<MeshType>::setField
                     PatchFieldType::New
                     (
                         emptyType,
+                        subMesh().boundary()[patchI],
+                        fields[i].dimensionedInternalField()
+                    )
+                );
+            }
+            else
+            if (isA<processorPolyPatch>(subMesh().boundary()[patchI].patch()))
+            {
+                bf.set
+                (
+                    patchI,
+                    PatchFieldType::New
+                    (
+                        processorType,
                         subMesh().boundary()[patchI],
                         fields[i].dimensionedInternalField()
                     )

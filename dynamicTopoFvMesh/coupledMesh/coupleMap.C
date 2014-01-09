@@ -254,6 +254,9 @@ void coupleMap::makeFaceMap() const
     {
         faceMap_[fIter.key()] = fIter();
     }
+
+    // Slice for internal faces
+    internalFaceMap_ = SubList<label>(faceMap_, nEntities(INTERNAL_FACE));
 }
 
 
@@ -529,6 +532,7 @@ void coupleMap::clearMaps() const
 {
     faceMap_.clear();
     cellMap_.clear();
+    internalFaceMap_.clear();
 
     subMeshPointMap_.clear();
     subMeshEdgeMap_.clear();
@@ -633,6 +637,17 @@ const labelList& coupleMap::cellMap() const
     }
 
     return cellMap_;
+}
+
+
+const labelList& coupleMap::internalFaceMap() const
+{
+    if (internalFaceMap_.empty())
+    {
+        makeFaceMap();
+    }
+
+    return internalFaceMap_;
 }
 
 
