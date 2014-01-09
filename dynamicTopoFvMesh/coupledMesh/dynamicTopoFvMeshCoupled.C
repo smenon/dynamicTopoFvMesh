@@ -4918,11 +4918,33 @@ void dynamicTopoFvMesh::syncCoupledPatches(labelHashSet& entities)
                 else
                 if (operations.size())
                 {
+                    bool required = false;
+
+                    forAll(operations, opI)
+                    {
+                        const coupleMap::opType op = operations[opI];
+
+                        if
+                        (
+                            op == coupleMap::REMOVE_CELL ||
+                            op == coupleMap::CONVERT_PATCH
+                        )
+                        {
+                            required = true;
+                            break;
+                        }
+                    }
+
                     // If we actually have operations from
-                    // this processor, this is a problem.
-                    Pout<< " * * * Sync Operations * * * " << nl
-                        << " Could not find patch for proc: " << proc << nl
-                        << abort(FatalError);
+                    // this processor that require patch conversion,
+                    // this is a problem.
+                    if (required)
+                    {
+                        Pout<< " * * * Sync Operations * * * " << nl
+                            << " Could not find patch for proc: " << proc << nl
+                            << " procIndices: " << procIndices_
+                            << abort(FatalError);
+                    }
                 }
                 else
                 {
