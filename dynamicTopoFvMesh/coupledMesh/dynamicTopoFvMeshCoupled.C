@@ -1585,7 +1585,36 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     if (sePatch == -1)
                     {
                         // Slave edge was an interior one
-                        edgePatch = neiProcPatch;
+                        if (neiProcPatch > -1)
+                        {
+                            edgePatch = neiProcPatch;
+                        }
+                        else
+                        {
+                            neiProcNo = procIndices_[pI];
+
+                            if (debug > 3)
+                            {
+                                Pout<< nl << nl
+                                    << " No face contact with"
+                                    << " processor: " << neiProcNo
+                                    << endl;
+                            }
+
+                            label pIdx = sendMeshes_[pI].map().patchIndex();
+
+                            // Add a patch creation order, if necessary
+                            if (pIdx == -1 && !createPatch.found(neiProcNo))
+                            {
+                                createPatch.insert(neiProcNo, -1);
+                            }
+
+                            // Specify a value for edgePatch:
+                            //  - Specify a value that we can use
+                            //    to back out the patch after creation
+                            //  - Also needs to bypass failure check
+                            edgePatch = (-2 - neiProcNo);
+                        }
                     }
                     else
                     if (sePatch == (slaveBoundary.size() - 1))
@@ -1669,9 +1698,13 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                         mesh.writeVTK("seEdge", seIndex, 1);
 
                         Pout<< " Could not find correct patch info: " << nl
+                            << " sEdge: " << sEdge << nl
                             << " seIndex: " << seIndex << nl
                             << " sePatch: " << sePatch << nl
                             << " neiProcPatch: " << neiProcPatch << nl
+                            << " neiProcNo: " << neiProcNo << nl
+                            << " proc: " << procIndices_[pI] << nl
+                            << " cMs: " << cMs << " cMe: " << cMe << nl
                             << " Patch Name: " <<
                             (
                                 sePatch > -1 ?
@@ -1701,7 +1734,36 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 if (sfPatch == -1)
                 {
                     // Slave face was an interior one
-                    facePatch = neiProcPatch;
+                    if (neiProcPatch > -1)
+                    {
+                        facePatch = neiProcPatch;
+                    }
+                    else
+                    {
+                        neiProcNo = procIndices_[pI];
+
+                        if (debug > 3)
+                        {
+                            Pout<< nl << nl
+                                << " No face contact with"
+                                << " processor: " << neiProcNo
+                                << endl;
+                        }
+
+                        label pIdx = sendMeshes_[pI].map().patchIndex();
+
+                        // Add a patch creation order, if necessary
+                        if (pIdx == -1 && !createPatch.found(neiProcNo))
+                        {
+                            createPatch.insert(neiProcNo, -1);
+                        }
+
+                        // Specify a value for edgePatch:
+                        //  - Specify a value that we can use
+                        //    to back out the patch after creation
+                        //  - Also needs to bypass failure check
+                        facePatch = (-2 - neiProcNo);
+                    }
                 }
                 else
                 if (sfPatch == (slaveBoundary.size() - 1))
@@ -1824,10 +1886,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                                     << abort(FatalError);
                             }
 
-                            label pIdx =
-                            (
-                                sendMeshes_[prI].map().patchIndex()
-                            );
+                            label pIdx = sendMeshes_[prI].map().patchIndex();
 
                             // Add a patch creation order, if necessary
                             if (pIdx == -1 && !createPatch.found(neiProcNo))
@@ -2103,6 +2162,28 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         // Create a new processor patch
         procIter() = createProcessorPatch(neiProcNo);
 
+        // Renumber edge conversion patches
+        forAll(masterConvertEdgePatch, pI)
+        {
+            Map<label>& convertMap = masterConvertEdgePatch[pI];
+
+            forAllIter(Map<label>, convertMap, mIter)
+            {
+                if (mIter() < 0)
+                {
+                    // Back out the neighbouring processor ID
+                    label proc = Foam::mag(mIter() + 2);
+
+                    if (proc == neiProcNo)
+                    {
+                        // Set the index
+                        mIter() = procIter();
+                    }
+                }
+            }
+        }
+
+        // Renumber face conversion patches
         forAll(masterConvertFacePatch, pI)
         {
             Map<label>& convertMap = masterConvertFacePatch[pI];
