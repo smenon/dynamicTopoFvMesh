@@ -182,11 +182,14 @@ private:
         mutable faceList* facesPtr_;
         mutable labelListList* faceEdgesPtr_;
 
+    // Private Member Functions
+
         void makeEdges() const;
         void makeFaces() const;
 
         void makeFaceMap() const;
         void makeCellMap() const;
+        void makeInternalFaceMap() const;
 
         void clearAddressing() const;
 

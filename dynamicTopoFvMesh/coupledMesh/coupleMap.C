@@ -254,9 +254,6 @@ void coupleMap::makeFaceMap() const
     {
         faceMap_[fIter.key()] = fIter();
     }
-
-    // Slice for internal faces
-    internalFaceMap_ = SubList<label>(faceMap_, nEntities(INTERNAL_FACE));
 }
 
 
@@ -281,6 +278,22 @@ void coupleMap::makeCellMap() const
     {
         cellMap_[cIter.key()] = cIter();
     }
+}
+
+
+void coupleMap::makeInternalFaceMap() const
+{
+    // It is an error to attempt to recalculate
+    // if the map is already calculated
+    if (internalFaceMap_.size())
+    {
+        FatalErrorIn("void coupleMap::makeInternalFaceMap() const")
+            << "internal faceMap has already been calculated."
+            << abort(FatalError);
+    }
+
+    // Slice for internal faces
+    internalFaceMap_ = SubList<label>(faceMap(), nEntities(INTERNAL_FACE));
 }
 
 
@@ -644,7 +657,7 @@ const labelList& coupleMap::internalFaceMap() const
 {
     if (internalFaceMap_.empty())
     {
-        makeFaceMap();
+        makeInternalFaceMap();
     }
 
     return internalFaceMap_;
