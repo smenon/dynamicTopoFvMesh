@@ -1758,7 +1758,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                             createPatch.insert(neiProcNo, -1);
                         }
 
-                        // Specify a value for edgePatch:
+                        // Specify a value for facePatch:
                         //  - Specify a value that we can use
                         //    to back out the patch after creation
                         //  - Also needs to bypass failure check
