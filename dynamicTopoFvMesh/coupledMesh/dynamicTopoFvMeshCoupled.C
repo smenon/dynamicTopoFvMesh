@@ -707,7 +707,19 @@ void dynamicTopoFvMesh::initProcessorPriority()
     // Wait for transfers to complete
     meshOps::waitForBuffers();
 
-    Info<< " Processor priority: " << procPriority_ << endl;
+    if (debug)
+    {
+        labelList ranks(Pstream::nProcs(), -1);
+
+        forAll(ranks, procI)
+        {
+            ranks[procPriority_[procI]] = procI;
+        }
+
+        Info<< " Processor priority: " << procPriority_ << nl
+            << " Processor rankings: " << ranks
+            << endl;
+    }
 }
 
 
@@ -1007,44 +1019,20 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
         {
             label proc = procIndices_[pI];
 
-            const List<labelPair>* gppPtr = NULL;
-
             // Write out subMeshPoints as a VTK
-            if (priority(proc, lessOp<label>(), Pstream::myProcNo()))
-            {
-                const coupleMap& cMap = sendMeshes_[pI].map();
+            const coupleMap& cMap = sendMeshes_[pI].map();
 
-                writeVTK
-                (
-                    "subMeshPoints_" +
-                    Foam::name(Pstream::myProcNo()) + "to" +
-                    Foam::name(proc),
-                    cMap.subMeshPoints(),
-                    0
-                );
-
-                // Fetch reference
-                gppPtr = &(cMap.globalProcPoints());
-            }
-            else
-            {
-                const coupleMap& cMap = sendMeshes_[pI].map();
-
-                writeVTK
-                (
-                    "subMeshPoints_" +
-                    Foam::name(Pstream::myProcNo()) + "to" +
-                    Foam::name(proc),
-                    cMap.subMeshPoints(),
-                    0
-                );
-
-                // Fetch reference
-                gppPtr = &(cMap.globalProcPoints());
-            }
+            writeVTK
+            (
+                "subMeshPoints_" +
+                Foam::name(Pstream::myProcNo()) + "to" +
+                Foam::name(proc),
+                cMap.subMeshPoints(),
+                0, false, true
+            );
 
             // Write out globalProcPoints as a VTK
-            const List<labelPair>& gpp = *gppPtr;
+            const List<labelPair>& gpp = cMap.globalProcPoints();
 
             if (gpp.size())
             {
@@ -1061,7 +1049,7 @@ bool dynamicTopoFvMesh::identifyCoupledPatches()
                     Foam::name(Pstream::myProcNo()) + "to" +
                     Foam::name(proc),
                     gpPoints,
-                    0
+                    0, false, true
                 );
             }
         }
@@ -7830,6 +7818,82 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                 << abort(FatalError);
         }
     }
+
+    // Use subMesh and global points to identify additional
+    // processors, and update maps accordingly
+    if (is3D())
+    {
+        forAll(procIndices_, pI)
+        {
+            const label neiProcNo = procIndices_[pI];
+            const coupleMap& cMi = recvMeshes_[pI].map();
+
+            const labelList& smPts = cMi.subMeshPoints();
+            const List<labelPair>& gpp = cMi.globalProcPoints();
+
+            forAll(procIndices_, pJ)
+            {
+                if (pJ == pI)
+                {
+                    continue;
+                }
+
+                const coupleMap& cMj = recvMeshes_[pJ].map();
+
+                Map<labelList>& pPointMap = cMj.subMeshPointMap();
+
+                forAll(smPts, pointI)
+                {
+                    label mP = smPts[pointI];
+                    label sP = cMj.findSlave(coupleMap::POINT, mP);
+
+                    if (sP == -1)
+                    {
+                        continue;
+                    }
+
+                    Map<labelList>::iterator pIt = pPointMap.find(sP);
+
+                    if (pIt == pPointMap.end())
+                    {
+                        pPointMap.insert(sP, labelList(1, neiProcNo));
+                    }
+                    else
+                    {
+                        if (findIndex(pIt(), neiProcNo) == -1)
+                        {
+                            meshOps::sizeUpList(neiProcNo, pIt());
+                        }
+                    }
+                }
+
+                forAll(gpp, pointI)
+                {
+                    label mP = gpp[pointI].first();
+                    label sP = cMj.findSlave(coupleMap::POINT, mP);
+
+                    if (sP == -1)
+                    {
+                        continue;
+                    }
+
+                    Map<labelList>::iterator pIt = pPointMap.find(sP);
+
+                    if (pIt == pPointMap.end())
+                    {
+                        pPointMap.insert(sP, labelList(1, neiProcNo));
+                    }
+                    else
+                    {
+                        if (findIndex(pIt(), neiProcNo) == -1)
+                        {
+                            meshOps::sizeUpList(neiProcNo, pIt());
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -9232,7 +9296,7 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
               + '_'
               + Foam::name(neiProcNo),
                 identity(patchSizes_[pI]) + patchStarts_[pI],
-                2
+                2, false, true
             );
         }
 

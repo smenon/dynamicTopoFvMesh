@@ -3081,7 +3081,7 @@ const changeMap dynamicTopoFvMesh::swap32
             newTriFace,
             newCellIndex[0],
             newCellIndex[1],
-            labelList(3)
+            labelList(3, -1)
         )
     );
 
