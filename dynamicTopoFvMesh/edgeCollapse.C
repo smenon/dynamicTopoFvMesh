@@ -6086,9 +6086,15 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         }
     }
 
+    // Create a list of candidates for mapping
+    // using the list of checked cells
+    labelList mC(cellsChecked.size());
+
     // For cell-mapping, exclude all hull-cells
     forAll(cellsChecked, indexI)
     {
+        mC[indexI] = cellsChecked[indexI];
+
         if (cells_[cellsChecked[indexI]].empty())
         {
             cellsChecked[indexI] = -1;
@@ -6117,24 +6123,12 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     // Now that all old / new cells possess correct connectivity,
     // compute mapping information.
-    label mapCellSize = cellHull.size();
-
-    labelList mC(mapCellSize + 1, -1);
-
-    forAll(cellHull, cellI)
-    {
-        mC[cellI] = cellHull[cellI];
-    }
-
     forAll(cellsChecked, cellI)
     {
         if (cellsChecked[cellI] < 0)
         {
             continue;
         }
-
-        // Fill-in candidate mapping information
-        mC[mapCellSize] = cellsChecked[cellI];
 
         // Set the mapping for this cell
         setCellMapping(cellsChecked[cellI], mC);

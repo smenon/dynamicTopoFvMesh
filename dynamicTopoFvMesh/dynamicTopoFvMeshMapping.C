@@ -669,7 +669,7 @@ void dynamicTopoFvMesh::setCellMapping
                 masterCells.append(mapCells[cellI]);
             }
         }
-        else
+
         if (cellParents_.found(mapCells[cellI]))
         {
             const labelList& nParents = cellParents_[mapCells[cellI]];
