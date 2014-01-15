@@ -337,7 +337,7 @@ void dynamicTopoFvMesh::initCoupledStack
 // Execute load balancing operations on the mesh
 void dynamicTopoFvMesh::executeLoadBalancing
 (
-    const dictionary& balanceDict
+    dictionary& balanceDict
 )
 {
     if (!Pstream::parRun())
@@ -398,6 +398,10 @@ void dynamicTopoFvMesh::executeLoadBalancing
             );
         }
     }
+
+    // Ensure that the number of processors is consistent,
+    // and silently modify dictionary entry if not
+    balanceDict.set("numberOfSubdomains", Pstream::nProcs());
 
     // Read decomposition options and initialize
     autoPtr<decompositionMethod> decomposerPtr
