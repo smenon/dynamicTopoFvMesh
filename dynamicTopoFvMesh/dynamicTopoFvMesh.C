@@ -1934,8 +1934,14 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
     // Check for load-balancing in parallel
     if (reRead && (meshSubDict.found("loadBalancing") || mandatory_))
     {
+        // Fetch non-const reference
+        dictionary& balanceDict =
+        (
+            dict_.subDict("dynamicTopoFvMesh").subDict("loadBalancing")
+        );
+
         // Execute balancing
-        executeLoadBalancing(meshSubDict.subDict("loadBalancing"));
+        executeLoadBalancing(balanceDict);
     }
 }
 
