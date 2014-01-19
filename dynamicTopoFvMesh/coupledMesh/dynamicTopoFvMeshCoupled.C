@@ -8160,13 +8160,33 @@ void dynamicTopoFvMesh::resetBoundaries()
 
 
 // Convenience macro for field sub-setting
-#define sendFieldsOfType(type, info, n, t, off, map, str)                      \
+#define sendFieldsOfType(type, info, names, types, offset, map, stream)        \
 {                                                                              \
-    info.send<type##ScalarField>(n[0 + off], t[0 + off], map, str);            \
-    info.send<type##VectorField>(n[1 + off], t[1 + off], map, str);            \
-    info.send<type##SphericalTensorField>(n[2 + off], t[2 + off], map, str);   \
-    info.send<type##SymmTensorField>(n[3 + off], t[3 + off], map, str);        \
-    info.send<type##TensorField>(n[4 + off], t[4 + off], map, str);            \
+    {                                                                          \
+        scalar zeroValue = pTraits<scalar>::zero;                              \
+        info.send<type##ScalarField>                                           \
+        (names[0 + offset], types[0 + offset], zeroValue, map, stream);        \
+    }                                                                          \
+    {                                                                          \
+        vector zeroValue = pTraits<vector>::zero;                              \
+        info.send<type##VectorField>                                           \
+        (names[1 + offset], types[1 + offset], zeroValue, map, stream);        \
+    }                                                                          \
+    {                                                                          \
+        sphericalTensor zeroValue = pTraits<sphericalTensor>::zero;            \
+        info.send<type##SphericalTensorField>                                  \
+        (names[2 + offset], types[2 + offset], zeroValue, map, stream);        \
+    }                                                                          \
+    {                                                                          \
+        symmTensor zeroValue = pTraits<symmTensor>::zero;                      \
+        info.send<type##SymmTensorField>                                       \
+        (names[3 + offset], types[3 + offset], zeroValue, map, stream);        \
+    }                                                                          \
+    {                                                                          \
+        tensor zeroValue = pTraits<tensor>::zero;                              \
+        info.send<type##TensorField>                                           \
+        (names[4 + offset], types[4 + offset], zeroValue, map, stream);        \
+    }                                                                          \
 }
 
 
