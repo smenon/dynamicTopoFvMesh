@@ -230,11 +230,12 @@ label coupledInfo<MeshType>::slaveFaceZone() const
 
 // Subset geometric field
 template <class MeshType>
-template <class GeomField>
+template <class GeomField, class ZeroType>
 tmp<GeomField>
 coupledInfo<MeshType>::subSetField
 (
     const GeomField& f,
+    const ZeroType& zeroValue,
     const labelList& internalMapper
 ) const
 {
@@ -341,6 +342,10 @@ coupledInfo<MeshType>::subSetField
                     subFld().dimensionedInternalField()
                 )
             );
+
+            // Avoid dealing with uninitialised values
+            // by artificially assigning to zero
+            bf[patchI] == zeroValue;
         }
         else
         {
@@ -364,11 +369,12 @@ coupledInfo<MeshType>::subSetField
 
 // Subset geometric fields from registry to output stream
 template <class MeshType>
-template <class GeomField>
+template <class GeomField, class ZeroType>
 void coupledInfo<MeshType>::send
 (
     const wordList& fieldNames,
     const word& fieldType,
+    const ZeroType& zeroValue,
     const labelList& internalMapper,
     OSstream& strStream
 ) const
@@ -385,7 +391,7 @@ void coupledInfo<MeshType>::send
         const GeomField& fld = db.lookupObject<GeomField>(fieldNames[i]);
 
         // Subset the field
-        tmp<GeomField> tsubFld = subSetField(fld, internalMapper);
+        tmp<GeomField> tsubFld = subSetField(fld, zeroValue, internalMapper);
 
         // Send field subset through stream
         strStream
