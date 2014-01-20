@@ -3504,8 +3504,8 @@ scalar mesquiteMotionSolver::normFactor
 
     A(vectorField(x.size(), xRef), tmpField);
 
-    vectorField nFw = (w - tmpField);
-    vectorField nFb = (b - tmpField);
+    tmp<vectorField> nFw = (w - tmpField);
+    tmp<vectorField> nFb = (b - tmpField);
 
     if (debug)
     {
