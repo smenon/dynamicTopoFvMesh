@@ -2251,13 +2251,18 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
             pointMap
         );
 
+        // Alias for convenience
+        labelList& reverseMap = reversePointMap[pI];
+
         // Size-up the reverse-map
-        reversePointMap[pI].setSize(nProcSize[pI], -1);
+        reverseMap.setSize(nProcSize[pI], -1);
 
         // Fill reversePointMap
         forAll(pointMap, pointI)
         {
-            if (pointMap[pointI] < 0)
+            label mapIndex = pointMap[pointI];
+
+            if (mapIndex < 0)
             {
                 if (debug)
                 {
@@ -2270,16 +2275,16 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
                 continue;
             }
 
-            reversePointMap[pI][pointMap[pointI]] = pointI;
+            reverseMap[mapIndex] = pointI;
         }
 
         // Check reversePointMap for unfilled points
-        forAll(reversePointMap[pI], pointI)
+        forAll(reverseMap, pointI)
         {
             // Compute tolSqr for matching
             scalar tolSqr = sqr(tol);
 
-            if (reversePointMap[pI][pointI] == -1)
+            if (reverseMap[pointI] == -1)
             {
                 // Search my points for the unmatched point
                 const vector& uPoint = recvField[pointI];
@@ -4417,6 +4422,9 @@ void mesquiteMotionSolver::enforceCylindricalConstraints()
 
             axisVector /= mag(axisVector) + VSMALL;
 
+            scalar maxViol = 0.0;
+            label nViolations = 0;
+
             forAll(meshPts, pointI)
             {
                 point& x = refPoints_[meshPts[pointI]];
@@ -4435,14 +4443,19 @@ void mesquiteMotionSolver::enforceCylindricalConstraints()
 
                     if (viol > SMALL)
                     {
-                        WarningIn
-                        (
-                            "void mesquiteMotionSolver::"
-                            "enforceCylindricalConstraints()"
-                        )
-                            << " Constraint violation: " << viol << endl;
+                        ++nViolations;
+
+                        maxViol = (viol > maxViol) ? viol : maxViol;
                     }
                 }
+            }
+
+            if (debug)
+            {
+                Pout<< " Patch: " << cstrPatches[wordI]
+                    << " No. of violations: " << nViolations
+                    << " Max constraint violation: " << maxViol
+                    << endl;
             }
         }
     }
