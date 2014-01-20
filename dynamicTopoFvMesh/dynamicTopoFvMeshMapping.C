@@ -604,6 +604,9 @@ void dynamicTopoFvMesh::threadedMapping
         boundary[patchI].faceFaces();
     }
 
+    // Force calculation of demand-driven data on subMeshes
+    initCoupledWeights();
+
     // Execute threads in linear sequence
     executeThreads(identity(nThreads), hdl, &computeMappingThread);
 }

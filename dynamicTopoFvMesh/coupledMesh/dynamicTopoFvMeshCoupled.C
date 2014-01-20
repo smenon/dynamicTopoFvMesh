@@ -9845,6 +9845,33 @@ bool dynamicTopoFvMesh::coupledFillTables
 }
 
 
+// Initialize coupled weights calculation
+void dynamicTopoFvMesh::initCoupledWeights()
+{
+    if (!Pstream::parRun())
+    {
+        return;
+    }
+
+    forAll(procIndices_, pI)
+    {
+        // Fetch reference to subMesh
+        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+
+        mesh.cells();
+        mesh.cellCells();
+        mesh.cellPoints();
+
+        const polyBoundaryMesh& sBoundary = mesh.boundaryMesh();
+
+        forAll(sBoundary, patchI)
+        {
+            sBoundary[patchI].faceFaces();
+        }
+    }
+}
+
+
 // Additional mapping contributions for coupled entities
 void dynamicTopoFvMesh::computeCoupledWeights
 (
