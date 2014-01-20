@@ -96,7 +96,10 @@ void PoissonCorrector::interpolateFluxes(const labelList& faces) const
         const volVectorField& U = mesh().lookupObject<volVectorField>(UName);
 
         // Interpolate mapped velocity to faces
-        surfaceScalarField phiU = fvc::interpolate(U) & mesh().Sf();
+        tmp<surfaceScalarField> tphiU = fvc::interpolate(U) & mesh().Sf();
+
+        // Alias for convenience
+        surfaceScalarField& phiU = tphiU();
 
         phiU.rename("phiU");
 
