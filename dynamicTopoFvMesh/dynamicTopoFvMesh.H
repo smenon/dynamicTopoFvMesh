@@ -967,6 +967,9 @@ class dynamicTopoFvMesh
             PtrList<labelListList>& triangulations
         ) const;
 
+        // Initialize coupled weights calculation
+        void initCoupledWeights();
+
         // Additional mapping contributions for coupled entities
         void computeCoupledWeights
         (
