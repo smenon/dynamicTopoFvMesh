@@ -98,7 +98,8 @@ mesquiteMotionSolver::mesquiteMotionSolver
         ),
         mesh.points()
     ),
-    boundaryConditions_(NULL),
+    basePoints_(0),
+    boundaryConditions_(0),
     oldVolume_(0.0)
 {
     // Read options from the dictionary
@@ -146,7 +147,8 @@ mesquiteMotionSolver::mesquiteMotionSolver
         ),
         mesh.points()
     ),
-    boundaryConditions_(NULL),
+    basePoints_(0),
+    boundaryConditions_(0),
     oldVolume_(0.0)
 {
     // Read options from the dictionary
@@ -246,6 +248,22 @@ void mesquiteMotionSolver::readOptions()
     // for moving boundary conditions
     if (optionsDict.found("usePointDisplacement"))
     {
+        basePoints_.reset
+        (
+            new pointIOField
+            (
+                IOobject
+                (
+                    "basePoints",
+                    Mesh_.time().timeName(),
+                    Mesh_,
+                    IOobject::READ_IF_PRESENT,
+                    IOobject::AUTO_WRITE
+                ),
+                Mesh_.points()
+            )
+        );
+
         boundaryConditions_.reset
         (
             new pointVectorField
@@ -3666,7 +3684,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
     {
         // Use the pointVectorField form of boundary conditions
         boundaryConditions_().correctBoundaryConditions();
-        refPoints_ += boundaryConditions_().internalField();
+        refPoints_ = basePoints_() + boundaryConditions_().internalField();
     }
     else
     if (optionsDict.found("fixedValuePatches"))

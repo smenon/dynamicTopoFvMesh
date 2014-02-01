@@ -161,6 +161,9 @@ class mesquiteMotionSolver
         //- Original points prior to surface-smoothing
         mutable pointField origPoints_;
 
+        //- Base points for pointDisplacement boundary conditions
+        mutable autoPtr<pointIOField> basePoints_;
+
         //- Boundary conditions
         mutable autoPtr<pointVectorField> boundaryConditions_;
 
