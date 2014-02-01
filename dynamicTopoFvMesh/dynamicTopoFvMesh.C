@@ -1750,9 +1750,9 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
         // Set an attachment point for debugging
         if
         (
-            Pstream::parRun() &&
+            !reRead &&
             meshSubDict.found("parDebugAttach") &&
-            !reRead
+            readBool(meshSubDict.lookup("parDebugAttach"))
         )
         {
             label wait;
@@ -1763,9 +1763,12 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
 
                 cin >> wait;
 
-                for (label i = 0; i < Pstream::nProcs(); i++)
+                if (Pstream::parRun())
                 {
-                    meshOps::pWrite(i, wait);
+                    for (label i = 1; i < Pstream::nProcs(); i++)
+                    {
+                        meshOps::pWrite(i, wait);
+                    }
                 }
             }
             else
