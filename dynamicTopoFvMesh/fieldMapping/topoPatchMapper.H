@@ -134,6 +134,12 @@ class topoPatchMapper
 
         //- Clear out local storage
         void clearOut();
+        
+        //- Has unmapped elements
+        virtual bool hasUnmapped() const
+        {
+            return false;
+        }
 
 public:
 
