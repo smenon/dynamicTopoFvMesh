@@ -2220,7 +2220,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
                 );
 
                 Info<< "  Swap Progress: " << percent << "% :"
-                    << "  Total: " << mesh.status(1)
+                    << "  Total: " << mesh.status(TOTAL_SWAPS)
                     << "             \r"
                     << flush;
 
@@ -2257,7 +2257,7 @@ void dynamicTopoFvMesh::swap2DEdges(void *argument)
     if (reported)
     {
         Info<< "  Swap Progress: 100% :"
-            << "  Total: " << mesh.status(1)
+            << "  Total: " << mesh.status(TOTAL_SWAPS)
             << "             \r"
             << endl;
     }
@@ -2326,8 +2326,8 @@ void dynamicTopoFvMesh::swap3DEdges
                 );
 
                 Info<< "  Swap Progress: " << percent << "% :"
-                    << "  Surface: " << mesh.status(2)
-                    << ", Total: " << mesh.status(1)
+                    << "  Surface: " << mesh.status(SURFACE_SWAPS)
+                    << ", Total: " << mesh.status(TOTAL_SWAPS)
                     << "             \r"
                     << flush;
 
@@ -2384,8 +2384,8 @@ void dynamicTopoFvMesh::swap3DEdges
     if (reported)
     {
         Info<< "  Swap Progress: 100% :"
-            << "  Surface: " << mesh.status(2)
-            << ", Total: " << mesh.status(1)
+            << "  Surface: " << mesh.status(SURFACE_SWAPS)
+            << ", Total: " << mesh.status(TOTAL_SWAPS)
             << "             \r"
             << endl;
     }
@@ -2446,9 +2446,9 @@ void dynamicTopoFvMesh::edgeRefinementEngine
                 );
 
                 Info<< "  Refinement Progress: " << percent << "% :"
-                    << "  Bisections: " << mesh.status(3)
-                    << ", Collapses: " << mesh.status(4)
-                    << ", Total: " << mesh.status(0)
+                    << "  Bisections: " << mesh.status(TOTAL_BISECTIONS)
+                    << ", Collapses: " << mesh.status(TOTAL_COLLAPSES)
+                    << ", Total: " << mesh.status(TOTAL_MODIFICATIONS)
                     << "             \r"
                     << flush;
 
@@ -2496,9 +2496,9 @@ void dynamicTopoFvMesh::edgeRefinementEngine
     if (reported)
     {
         Info<< "  Refinement Progress: 100% :"
-            << "  Bisections: " << mesh.status(3)
-            << ", Collapses: " << mesh.status(4)
-            << ", Total: " << mesh.status(0)
+            << "  Bisections: " << mesh.status(TOTAL_BISECTIONS)
+            << ", Collapses: " << mesh.status(TOTAL_COLLAPSES)
+            << ", Total: " << mesh.status(TOTAL_MODIFICATIONS)
             << "             \r"
             << endl;
     }
