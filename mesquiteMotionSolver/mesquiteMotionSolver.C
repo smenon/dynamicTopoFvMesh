@@ -39,6 +39,7 @@ License
 #include "DimensionedField.H"
 #include "pointPatchField.H"
 #include "pointMesh.H"
+#include "mapPolyMesh.H"
 
 #include "hexMatcher.H"
 #include "tetMatcher.H"
@@ -4898,6 +4899,87 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
     // Reset refPoints
     refPoints_.clear();
     refPoints_ = Mesh_.points();
+
+    // Map basePoints
+    if (boundaryConditions_.valid())
+    {
+        // Fetch reference to basePoints field
+        pointIOField& bPoints = basePoints_();
+
+        // Copy field prior to map
+        pointField oldBasePoints(bPoints);
+
+        // Fetch point mapping
+        const labelList& pm = mpm.pointMap();
+        const List<objectMap>& pfp = mpm.pointsFromPointsMap();
+
+        if (pfp.empty())
+        {
+            // Direct addressing, no weights
+            bPoints.map(oldBasePoints, pm);
+        }
+        else
+        {
+            // Interpolative addressing
+            label nInsertedPoints = 0;
+            labelListList addr(nPoints_);
+            scalarListList weights(nPoints_);
+
+            forAll(pfp, pfpI)
+            {
+                // Get addressing
+                const labelList& mo = pfp[pfpI].masterObjects();
+
+                label pointI = pfp[pfpI].index();
+
+                if (addr[pointI].size() > 0)
+                {
+                    FatalErrorIn("void mesquiteMotionSolver::update()")
+                        << "Master point " << pointI
+                        << " mapped from points " << mo
+                        << " is already destination for mapping."
+                        << abort(FatalError);
+                }
+
+                // Specify equal weights
+                scalar weight = (1.0 / scalar(mo.size()));
+
+                // Set master objects and weights
+                addr[pointI] = mo;
+                weights[pointI] = scalarList(mo.size(), weight);
+            }
+
+            // Do mapped points.
+            // Note that this can already be set by pointsFromPoints,
+            // so check if addressing size still zero
+            forAll(pm, pointI)
+            {
+                // Mapped from a single point
+                if (pm[pointI] > -1 && addr[pointI].empty())
+                {
+                    addr[pointI] = labelList(1, pm[pointI]);
+                    weights[pointI] = scalarList(1, scalar(1.0));
+                }
+
+                // Check for inserted points without any addressing
+                if (pm[pointI] < 0 && addr[pointI].empty())
+                {
+                    nInsertedPoints++;
+                }
+            }
+
+            if (nInsertedPoints)
+            {
+                FatalErrorIn("void mesquiteMotionSolver::update()")
+                    << " Found " << nInsertedPoints << " which are"
+                    << " not mapped from any parent points." << nl
+                    << abort(FatalError);
+            }
+
+            // Map with addressing and weights
+            bPoints.map(oldBasePoints, addr, weights);
+        }
+    }
 
     // Clear the auxiliary maps / buffers
     procIndices_.clear();

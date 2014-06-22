@@ -4304,7 +4304,7 @@ bool dynamicTopoFvMesh::resetMesh()
 
             // Reset old-volumes
             resetMotion();
-            setV0();
+            setV0() = V();
         }
 
         // Correct volume fluxes on the old mesh
@@ -4442,6 +4442,9 @@ bool dynamicTopoFvMesh::resetMesh()
             dimensionedScalar("rank", dimless, Pstream::myProcNo())
         ).write();
     }
+
+    // Set polyMesh for topology change
+    polyMesh::topoChanging(topoChangeFlag_);
 
     // Reset and return flag
     if (topoChangeFlag_)
