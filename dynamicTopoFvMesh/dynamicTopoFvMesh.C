@@ -4320,11 +4320,8 @@ bool dynamicTopoFvMesh::resetMesh()
             movePoints(points);
         }
 
-        // Update the mesh-motion solver
-        if (motionSolver_.valid())
-        {
-            motionSolver_->updateMesh(mpm);
-        }
+        // Mesh-motion solver update
+        // will be handled via callbacks
 
         // Clear unwanted member data
         addedFacePatches_.clear();
