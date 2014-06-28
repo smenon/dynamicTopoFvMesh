@@ -35,6 +35,7 @@ Author
 
 \*----------------------------------------------------------------------------*/
 
+#include "fvc.H"
 #include "volFields.H"
 #include "lengthScaleEstimator.H"
 #include "processorPolyPatch.H"
@@ -44,7 +45,14 @@ namespace Foam
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-defineTypeNameAndDebug(lengthScaleEstimator,0);
+defineTypeNameAndDebug(lengthScaleEstimator, 0);
+
+lengthScaleEstimator::ScaleFnPair lengthScaleEstimator::methods_[] =
+{
+    ScaleFnPair("constant", &lengthScaleEstimator::constantScale),
+    ScaleFnPair("direct", &lengthScaleEstimator::directScale),
+    ScaleFnPair("inverse", &lengthScaleEstimator::inverseScale)
+};
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -67,6 +75,8 @@ lengthScaleEstimator::lengthScaleEstimator
     sliceHoldOff_(0),
     sliceBoxes_(0),
     field_("none"),
+    scale_(NULL),
+    gradient_(false),
     fieldLength_(0.0),
     lowerRefineLevel_(0.001),
     upperRefineLevel_(0.999),
@@ -553,6 +563,69 @@ void lengthScaleEstimator::readLengthScaleInfo
 }
 
 
+// Use a constant length scale for field-based refinement
+scalar lengthScaleEstimator::constantScale(const scalar fieldValue) const
+{
+    return fieldLength_;
+}
+
+
+// Use a direct-proportion length scale for field-based refinement
+scalar lengthScaleEstimator::directScale(const scalar fieldValue) const
+{
+    if (fieldValue > upperRefineLevel_)
+    {
+        return meanScale_;
+    }
+
+    scalar value = fieldValue;
+
+    // Bracket the value within limits
+    value = min(value, upperRefineLevel_);
+    value = max(value, lowerRefineLevel_);
+
+    scalar ratio
+    (
+        (value - lowerRefineLevel_) / (upperRefineLevel_ - lowerRefineLevel_)
+    );
+
+    scalar scale
+    (
+        minLengthScale_ + ((maxLengthScale_ - minLengthScale_) * ratio)
+    );
+
+    return scale;
+}
+
+
+// Use an inverse-proportion length scale for field-based refinement
+scalar lengthScaleEstimator::inverseScale(const scalar fieldValue) const
+{
+    if (fieldValue < lowerRefineLevel_)
+    {
+        return meanScale_;
+    }
+
+    scalar value = fieldValue;
+
+    // Bracket the value within limits
+    value = min(value, upperRefineLevel_);
+    value = max(value, lowerRefineLevel_);
+
+    scalar ratio
+    (
+        (value - lowerRefineLevel_) / (upperRefineLevel_ - lowerRefineLevel_)
+    );
+
+    scalar scale
+    (
+        minLengthScale_ + ((maxLengthScale_ - minLengthScale_) * (1.0 - ratio))
+    );
+
+    return scale;
+}
+
+
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 // Read edge refinement options from the dictionary
@@ -769,6 +842,43 @@ void lengthScaleEstimator::readRefinementOptions
     {
         field_ = word(refineDict.lookup("fieldRefinement"));
 
+        word scaleMethod(refineDict.lookup("fieldScaleMethod"));
+
+        const label nMethods(sizeof(methods_) / sizeof(methods_[0]));
+
+        bool invalidMethod = true;
+
+        for (label i = 0; i < nMethods; i++)
+        {
+            if (scaleMethod == methods_[i].first())
+            {
+                scale_ = methods_[i].second();
+                invalidMethod = false;
+                break;
+            }
+        }
+
+        if (invalidMethod)
+        {
+            Info << nl << " Available methods: " << endl;
+
+            for (label i = 0; i < nMethods; i++)
+            {
+                Info << "    " << methods_[i].first() << nl;
+            }
+
+            FatalErrorIn
+            (
+                "void lengthScaleEstimator::readRefinementOptions"
+                "(const dictionary&, bool, bool)"
+            )
+                << " Invalid method: " << scaleMethod << " specified." << nl
+                << abort(FatalError);
+        }
+
+        // Define whether the gradient must be evaluated
+        gradient_ = readBool(refineDict.lookup("fieldGradient"));
+
         // Lookup a specified length-scale
         fieldLength_ = readScalar(refineDict.lookup("fieldLengthScale"));
 
@@ -804,7 +914,7 @@ void lengthScaleEstimator::readRefinementOptions
 }
 
 
-//- Set explicitly coupled patch information
+// Set explicitly coupled patch information
 void lengthScaleEstimator::setCoupledPatches
 (
     const dictionary& coupledPatches
@@ -849,7 +959,7 @@ void lengthScaleEstimator::setCoupledPatches
 }
 
 
-//- Calculate the length scale field
+// Calculate the length scale field
 void lengthScaleEstimator::calculateLengthScale
 (
     UList<scalar>& lengthScale
@@ -920,10 +1030,102 @@ void lengthScaleEstimator::calculateLengthScale
     // If a field has been specified, use that.
     if (field_ != "none")
     {
-        const volScalarField& vFld =
-        (
-            mesh_.objectRegistry::lookupObject<volScalarField>(field_)
-        );
+        const volScalarField* vFldPtr = NULL;
+
+        // Temporary pointer for gradient
+        volScalarField* magGradPtr = NULL;
+
+        if (gradient_)
+        {
+            // Lookup various field types, and evaluate the gradient
+            bool invalidObject = true;
+
+            // Evaluate using gradient scheme
+            word gradName("grad(" + field_ + ')');
+
+            // Register field under a name that's unique
+            word registerName("lengthScaleGradient(" + field_ + ')');
+
+            if (mesh_.objectRegistry::foundObject<volScalarField>(field_))
+            {
+                const volScalarField& field =
+                (
+                    mesh_.objectRegistry::lookupObject<volScalarField>(field_)
+                );
+
+                magGradPtr =
+                (
+                    new volScalarField
+                    (
+                        IOobject
+                        (
+                            registerName,
+                            mesh_.time().timeName(),
+                            mesh_,
+                            IOobject::NO_READ,
+                            IOobject::NO_WRITE,
+                            false
+                        ),
+                        mag(fvc::grad(field, gradName))
+                    )
+                );
+
+                invalidObject = false;
+            }
+
+            if (mesh_.objectRegistry::foundObject<volVectorField>(field_))
+            {
+                const volVectorField& field =
+                (
+                    mesh_.objectRegistry::lookupObject<volVectorField>(field_)
+                );
+
+                magGradPtr =
+                (
+                    new volScalarField
+                    (
+                        IOobject
+                        (
+                            registerName,
+                            mesh_.time().timeName(),
+                            mesh_,
+                            IOobject::NO_READ,
+                            IOobject::NO_WRITE,
+                            false
+                        ),
+                        mag(fvc::grad(field, gradName))
+                    )
+                );
+
+                invalidObject = false;
+            }
+
+            if (invalidObject)
+            {
+                FatalErrorIn
+                (
+                    "void lengthScaleEstimator::calculateLengthScale"
+                    "(UList<scalar>& lengthScale)"
+                )
+                    << " Invalid field: " << field_
+                    << " specified for gradient." << nl
+                    << abort(FatalError);
+            }
+
+            vFldPtr = magGradPtr;
+        }
+        else
+        {
+            // Lookup a scalar field by default
+            const volScalarField& field =
+            (
+                mesh_.objectRegistry::lookupObject<volScalarField>(field_)
+            );
+
+            vFldPtr = &field;
+        }
+
+        const volScalarField& vFld = *vFldPtr;
 
         const labelList& own = mesh_.faceOwner();
         const labelList& nei = mesh_.faceNeighbour();
@@ -940,7 +1142,7 @@ void lengthScaleEstimator::calculateLengthScale
                 if (!cellLevels[ownCell])
                 {
                     cellLevels[ownCell] = level;
-                    lengthScale[ownCell] = fieldLength_;
+                    lengthScale[ownCell] = (this->*scale_)(fAvg);
 
                     levelCells.insert(ownCell);
 
@@ -950,13 +1152,19 @@ void lengthScaleEstimator::calculateLengthScale
                 if (!cellLevels[neiCell])
                 {
                     cellLevels[neiCell] = level;
-                    lengthScale[neiCell] = fieldLength_;
+                    lengthScale[neiCell] = (this->*scale_)(fAvg);
 
                     levelCells.insert(neiCell);
 
                     visitedCells++;
                 }
             }
+        }
+
+        // Clean up gradient, if necessary
+        if (gradient_)
+        {
+            deleteDemandDrivenData(magGradPtr);
         }
     }
 
