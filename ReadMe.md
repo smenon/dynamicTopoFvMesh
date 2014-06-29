@@ -41,7 +41,7 @@ Field-mapping utility that works in a manner similar to mapFields in OpenFOAM, u
 
 ## Target platform
 The master branch is known to work with OpenFOAM-extend.
-To compile with the OpenFOAM-2.2.x release, switch to the Port-2.2.x branch.
+To compile with the OpenFOAM-2.3.x release, switch to the Port-2.3.x branch.
 
 ## Author
     Sandeep Menon
