@@ -100,6 +100,7 @@ class topoMapper
         mutable PtrList<volTensorField> vGradPtrs_;
 
         //- Geometric information on the old mesh
+        mutable scalarField* cellVolumesPtr_;
         mutable volVectorField* cellCentresPtr_;
 
         //- Intersection weights
@@ -227,6 +228,9 @@ public:
 
         //- Return non-const access to cell centres
         volVectorField& volCentres() const;
+
+        //- Return non-const access to cell volumes
+        scalarField& internalVolumes() const;
 
         //- Return stored cell centre information
         const vectorField& internalCentres() const;

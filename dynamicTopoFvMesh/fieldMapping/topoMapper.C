@@ -40,7 +40,6 @@ Author
 #include "topoCellMapper.H"
 #include "topoSurfaceMapper.H"
 #include "topoBoundaryMeshMapper.H"
-#include "fixedValueFvPatchFields.H"
 
 namespace Foam
 {
@@ -65,6 +64,10 @@ void topoMapper::storeGradients() const
 //- Store geometric information
 void topoMapper::storeGeometry() const
 {
+    typedef volVectorField::PatchFieldType PatchFieldType;
+    typedef volVectorField::GeometricBoundaryField GeomBdyFieldType;
+    typedef volVectorField::DimensionedInternalField DimInternalField;
+
     // Wipe out existing information
     deleteDemandDrivenData(cellCentresPtr_);
 
@@ -75,26 +78,41 @@ void topoMapper::storeGeometry() const
     label nPatches = mesh_.boundary().size();
 
     // Create field parts
-    PtrList<fvPatchField<vector> > volCentrePatches(nPatches);
+    PtrList<PatchFieldType> volCentrePatches(nPatches);
 
-    // Over-ride and set all patches to fixedValue
-    for (label patchI = 0; patchI < nPatches; patchI++)
+    // Define patch type names
+    word emptyType("empty");
+    word fixedValueType("fixedValue");
+
+    // Create dummy types for initial field creation
+    forAll(volCentrePatches, patchI)
     {
-        volCentrePatches.set
-        (
-            patchI,
-            new fixedValueFvPatchField<vector>
+        if (mesh_.boundary()[patchI].type() == emptyType)
+        {
+            volCentrePatches.set
             (
-                mesh_.boundary()[patchI],
-                DimensionedField<vector, volMesh>::null()
-            )
-        );
-
-        // Slice field to patch (forced assignment)
-        volCentrePatches[patchI] ==
-        (
-            mesh_.boundaryMesh()[patchI].patchSlice(Cf)
-        );
+                patchI,
+                PatchFieldType::New
+                (
+                    emptyType,
+                    mesh_.boundary()[patchI],
+                    DimInternalField::null()
+                )
+            );
+        }
+        else
+        {
+            volCentrePatches.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    fixedValueType,
+                    mesh_.boundary()[patchI],
+                    DimInternalField::null()
+                )
+            );
+        }
     }
 
     // Set the cell-centres pointer.
@@ -117,6 +135,48 @@ void topoMapper::storeGeometry() const
             volCentrePatches
         )
     );
+
+    // Alias for convenience
+    volVectorField& centres = *cellCentresPtr_;
+
+    // Set correct references for patch internal fields
+    GeomBdyFieldType& bf = centres.boundaryField();
+
+    forAll(bf, patchI)
+    {
+        if (mesh_.boundary()[patchI].type() == emptyType)
+        {
+            bf.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    emptyType,
+                    mesh_.boundary()[patchI],
+                    centres.dimensionedInternalField()
+                )
+            );
+        }
+        else
+        {
+            bf.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    fixedValueType,
+                    mesh_.boundary()[patchI],
+                    centres.dimensionedInternalField()
+                )
+            );
+
+            // Slice field to patch (forced assignment)
+            bf[patchI] == mesh_.boundaryMesh()[patchI].patchSlice(Cf);
+        }
+    }
+
+    // Set the cell-volumes pointer
+    cellVolumesPtr_ = new scalarField(mesh_.cellVolumes());
 }
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -134,6 +194,7 @@ topoMapper::topoMapper
     surfaceMap_(NULL),
     boundaryMap_(NULL),
     fluxCorrector_(fluxCorrector::New(mesh, dict)),
+    cellVolumesPtr_(NULL),
     cellCentresPtr_(NULL)
 {}
 
@@ -341,6 +402,22 @@ const vectorField& topoMapper::internalCentres() const
 }
 
 
+//- Return non-const access to cell volumes
+scalarField& topoMapper::internalVolumes() const
+{
+    if (!cellVolumesPtr_)
+    {
+        FatalErrorIn
+        (
+            "scalarField& topoMapper::internalVolumes() const"
+        ) << nl << " Pointer has not been set. "
+          << abort(FatalError);
+    }
+
+    return *cellVolumesPtr_;
+}
+
+
 //- Return stored patch centre information
 const vectorField& topoMapper::patchCentres(const label i) const
 {
@@ -519,6 +596,7 @@ void topoMapper::clear() const
     vGradPtrs_.clear();
 
     // Wipe out geomtry information
+    deleteDemandDrivenData(cellVolumesPtr_);
     deleteDemandDrivenData(cellCentresPtr_);
 
     // Clear maps
