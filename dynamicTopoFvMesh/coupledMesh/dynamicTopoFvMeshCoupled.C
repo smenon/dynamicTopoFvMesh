@@ -8211,10 +8211,9 @@ void dynamicTopoFvMesh::initFieldTransfers
             << endl;
     }
 
-    // Clear out mesh geometry, since those
-    // are to be wiped out after topo-changes anyway.
-    fvMesh::clearOut();
-    polyMesh::resetMotion();
+    // Might want to consider clearing out
+    // mesh-related geometry here
+    // (which does not need to be mapped)
 
     // Size up wordLists
     //  - Five templated volFields

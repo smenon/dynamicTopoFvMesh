@@ -602,6 +602,7 @@ void coupledInfo<MeshType>::resizeMap
         (
             field.boundaryField()[patchI].empty()
          && boundaryMapper[patchI].directAddressing().size()
+         && field.boundaryField()[patchI].type() != emptyPolyPatch::typeName
         )
         {
             // Artificially set the size prior to remap,
