@@ -4835,6 +4835,11 @@ void mesquiteMotionSolver::solve()
           + ((1.0 - relax_) * origPoints_[pointI])
         );
     }
+
+    if (boundaryConditions_.valid())
+    {
+    	boundaryConditions_().internalField() = refPoints_ - basePoints_();
+    }
 }
 
 
