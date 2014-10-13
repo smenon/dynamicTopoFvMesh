@@ -127,6 +127,10 @@ class topoMapper
         //- Disallow default bitwise assignment
         void operator=(const topoMapper&);
 
+        // Store old-time information for all fields of the specified type
+        template <class GeomField>
+        void storeOldTimes() const;
+
         // Store gradients of volFields on the mesh
         // prior to topology changes
         template <class Type, class gradType>
@@ -218,6 +222,9 @@ public:
 
         //- Fetch patch starts
         const labelListList& patchStarts() const;
+
+        // Store old-time information for all registered fields
+        void storeOldTimes() const;
 
         //- Store mesh information for the mapping stage
         void storeMeshInformation() const;

@@ -32,6 +32,28 @@ namespace Foam
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
+// Store old-time information for all fields of the specified type
+template <class GeomField>
+void topoMapper::storeOldTimes() const
+{
+    typedef HashTable<const GeomField*> GeomFieldTable;
+
+    // Fetch all fields from registry
+    GeomFieldTable fields(mesh_.objectRegistry::lookupClass<GeomField>());
+
+    // Store old-times before gradient computation
+    for
+    (
+        typename GeomFieldTable::iterator fIter = fields.begin();
+        fIter != fields.end();
+        ++fIter
+    )
+    {
+        fIter()->storeOldTimes();
+    }
+}
+
+
 // Store gradients of fields on the mesh prior to topology changes
 template <class Type, class gradType>
 void topoMapper::storeGradients

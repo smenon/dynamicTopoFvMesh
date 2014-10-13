@@ -360,6 +360,23 @@ const labelListList& topoMapper::patchStarts() const
 }
 
 
+// Store old-time information for all registered fields
+void topoMapper::storeOldTimes() const
+{
+    storeOldTimes<volScalarField>();
+    storeOldTimes<volVectorField>();
+    storeOldTimes<volSphericalTensorField>();
+    storeOldTimes<volSymmTensorField>();
+    storeOldTimes<volTensorField>();
+
+    storeOldTimes<surfaceScalarField>();
+    storeOldTimes<surfaceVectorField>();
+    storeOldTimes<surfaceSphericalTensorField>();
+    storeOldTimes<surfaceSymmTensorField>();
+    storeOldTimes<surfaceTensorField>();
+}
+
+
 //- Store mesh information for the mapping stage
 void topoMapper::storeMeshInformation() const
 {

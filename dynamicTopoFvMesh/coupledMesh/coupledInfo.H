@@ -202,7 +202,7 @@ public:
                 {
                     return directAddressing_;
                 }
-                
+
                 //- Has unmapped elements
                 virtual bool hasUnmapped() const
                 {

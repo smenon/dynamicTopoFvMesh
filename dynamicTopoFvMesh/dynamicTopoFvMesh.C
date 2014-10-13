@@ -3993,6 +3993,9 @@ bool dynamicTopoFvMesh::resetMesh()
         // Fetch reference to mapper
         const topoMapper& fieldMapper = mapper_();
 
+        // Store old-time information for all registered fields
+        fieldMapper.storeOldTimes();
+
         // Set information for the mapping stage
         //  - Must be done prior to field-transfers and mesh reset
         fieldMapper.storeMeshInformation();
