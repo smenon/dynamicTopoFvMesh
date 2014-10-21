@@ -199,7 +199,7 @@ void dynamicTopoFvMesh::reOrderPoints
     }
 
     // Reset all zones
-    //pointZones.updateMesh();
+    pointZones.clearAddressing();
 
     // Loop through all local coupling maps, and renumber points.
     forAll(patchCoupling_, patchI)
@@ -1220,7 +1220,7 @@ void dynamicTopoFvMesh::reOrderFaces
     }
 
     // Reset all zones
-    //faceZones.updateMesh();
+    faceZones.clearAddressing();
 
     // Loop through all local coupling maps, and renumber faces.
     forAll(patchCoupling_, patchI)
@@ -1666,7 +1666,7 @@ void dynamicTopoFvMesh::reOrderCells
     }
 
     // Reset all zones
-    //cellZones.updateMesh();
+    cellZones.clearAddressing();
 
     if (debug)
     {
