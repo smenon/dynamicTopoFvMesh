@@ -285,6 +285,9 @@ class mesquiteMotionSolver
         // Prepare mesquite connectivity for parallel runs
         void initMesquiteParallelArrays();
 
+        // Prepare flags for boundary layer zones
+        void initBoundaryLayerZones();
+
         // Compute centroids based on up-to-date point positions
         void computeCentroids
         (
@@ -301,6 +304,9 @@ class mesquiteMotionSolver
 
         // Apply fixed-value boundary conditions, if any.
         void applyFixedValuePatches();
+
+        // Apply boundary layer displacement
+        void applyBoundaryLayerPatches(pointField& displacement);
 
         // Private member function to perform Laplacian surface smoothing
         void smoothSurfaces();

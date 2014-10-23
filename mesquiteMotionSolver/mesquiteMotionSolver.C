@@ -1286,6 +1286,9 @@ void mesquiteMotionSolver::initArrays()
 
     if (twoDMesh_)
     {
+        // Optionally fix additional boundary layer zone points
+        initBoundaryLayerZones();
+
         // Initialise parallel connectivity, if necessary
         initParallelConnectivity();
 
@@ -1730,6 +1733,9 @@ void mesquiteMotionSolver::initArrays()
             }
         }
     }
+
+    // Optionally fix additional boundary layer zone points
+    initBoundaryLayerZones();
 
     // Initialise parallel connectivity, if necessary
     initParallelConnectivity();
@@ -2875,6 +2881,84 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
 }
 
 
+// Prepare flags for boundary layer zones
+void mesquiteMotionSolver::initBoundaryLayerZones()
+{
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
+    if (!optionsDict.found("boundaryLayerZones"))
+    {
+        return;
+    }
+
+    const pointZoneMesh& pZones = mesh().pointZones();
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+    const dictionary& bDict = optionsDict.subDict("boundaryLayerZones");
+
+    wordList blPatch = bDict.toc();
+
+    forAll(blPatch, wordI)
+    {
+        const word& patchName = blPatch[wordI];
+        const label patchIndex = boundary.findPatchID(patchName);
+
+        if (patchIndex == -1)
+        {
+            FatalErrorIn("void mesquiteMotionSolver::initBoundaryLayerZones()")
+                << "Cannot find patch: " << patchName
+                << abort(FatalError);
+        }
+
+        const wordList blZones(bDict.lookup(patchName));
+
+        forAll(blZones, zoneI)
+        {
+            const label zoneID = pZones.findZoneID(blZones[zoneI]);
+
+            if (zoneID == -1)
+            {
+                continue;
+            }
+
+            const pointZone& pLabels = pZones[zoneID];
+
+            if (twoDMesh_)
+            {
+                forAll(pIDs_, patchI)
+                {
+                    const label pOffset = offsets_[patchI];
+                    const polyPatch& bPatch = boundary[pIDs_[patchI]];
+
+                    forAll(pLabels, pointI)
+                    {
+                        // Find local index in patch
+                        const label pLabel = pLabels[pointI];
+                        const label local = bPatch.whichPoint(pLabel);
+
+                        if (local == -1)
+                        {
+                            continue;
+                        }
+
+                        const label fieldIndex = local + pOffset;
+
+                        // Modify boundary condition
+                        bdy_[fieldIndex] = vector::zero;
+                    }
+                }
+            }
+            else
+            {
+                forAll(pLabels, pointI)
+                {
+                    fixFlags_[pLabels[pointI]] = 1;
+                }
+            }
+        }
+    }
+}
+
+
 // Private member function to construct parallel connectivity data
 void mesquiteMotionSolver::initParallelConnectivity()
 {
@@ -3681,11 +3765,40 @@ void mesquiteMotionSolver::applyFixedValuePatches()
     // Fetch the sub-dictionary
     const dictionary& optionsDict = subDict("mesquiteOptions");
 
+    // Fetch reference to boundary
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    // Construct a pointMesh.
+    const pointMesh& pMesh = pointMesh::New(Mesh_);
+
+    // Create a temporary dimensioned field
+    DimensionedField<point, pointMesh> dPointField
+    (
+        IOobject
+        (
+            "dPointField",
+            Mesh_.time().timeName(),
+            Mesh_,
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        ),
+        pMesh,
+        dimLength,
+        pointField(refPoints_.size(), vector::zero)
+    );
+
     if (boundaryConditions_.valid())
     {
         // Use the pointVectorField form of boundary conditions
         boundaryConditions_().correctBoundaryConditions();
-        refPoints_ = basePoints_() + boundaryConditions_().internalField();
+
+        const pointField& bP = basePoints_();
+        const pointField& iF = boundaryConditions_().internalField();
+
+        forAll(refPoints_, pI)
+        {
+            dPointField[pI] = (bP[pI] + iF[pI] - refPoints_[pI]);
+        }
     }
     else
     if (optionsDict.found("fixedValuePatches"))
@@ -3693,30 +3806,10 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         // Check the dictionary for entries corresponding to constant
         // fixed-displacement BCs. This is done because a 'motionU'
         // field is not used to specify such BC types.
-        const polyBoundaryMesh& boundary = mesh().boundaryMesh();
         const dictionary& fvpDict = optionsDict.subDict("fixedValuePatches");
 
         // Extract a list of patch names.
         wordList fixPatches = fvpDict.toc();
-
-        // Construct a pointMesh.
-        const pointMesh& pMesh = pointMesh::New(Mesh_);
-
-        // Create a temporary dimensioned field
-        DimensionedField<point, pointMesh> dPointField
-        (
-            IOobject
-            (
-                "dPointField",
-                Mesh_.time().timeName(),
-                Mesh_,
-                IOobject::NO_READ,
-                IOobject::NO_WRITE
-            ),
-            pMesh,
-            dimLength,
-            pointField(refPoints_.size(), vector::zero)
-        );
 
         // Accumulate a set of points, so that common-points
         // are not moved twice. If an overlap exists, the
@@ -3748,110 +3841,177 @@ void mesquiteMotionSolver::applyFixedValuePatches()
 
             pField().updateCoeffs();
         }
+    }
 
-        if (Pstream::parRun())
+    // Sync displacements in parallel
+    if (Pstream::parRun())
+    {
+        vector smallVec(VSMALL, VSMALL, VSMALL);
+
+        if (twoDMesh_)
         {
-            vector smallVec(VSMALL, VSMALL, VSMALL);
+            // Size up the buffer
+            vectorField parDisp(pointMarker_.size(), vector::zero);
 
-            if (twoDMesh_)
+            forAll(pIDs_, patchI)
             {
-                // Size up the buffer
-                vectorField parDisp(pointMarker_.size(), vector::zero);
+                const label pID = pIDs_[patchI];
+                const label pOffset = offsets_[patchI];
+                const labelList& meshPts = boundary[pID].meshPoints();
 
-                forAll(pIDs_, patchI)
+                forAll(meshPts, pointI)
                 {
-                    const label pID = pIDs_[patchI];
-                    const label pOffset = offsets_[patchI];
-                    const labelList& meshPts = boundary[pID].meshPoints();
-
-                    forAll(meshPts, pointI)
-                    {
-                        const label gIndex = meshPts[pointI];
-                        parDisp[pOffset + pointI] = dPointField[gIndex];
-                    }
+                    const label gIndex = meshPts[pointI];
+                    parDisp[pOffset + pointI] = dPointField[gIndex];
                 }
+            }
 
-                // Transfer buffers across processors
-                transferBuffers(parDisp, true);
+            // Transfer buffers across processors
+            transferBuffers(parDisp, true);
 
-                forAll(pIDs_, patchI)
+            forAll(pIDs_, patchI)
+            {
+                const label pID = pIDs_[patchI];
+                const label pOffset = offsets_[patchI];
+                const labelList& meshPts = boundary[pID].meshPoints();
+
+                forAll(meshPts, pointI)
                 {
-                    const label pID = pIDs_[patchI];
-                    const label pOffset = offsets_[patchI];
-                    const labelList& meshPts = boundary[pID].meshPoints();
+                    const label gIndex = meshPts[pointI];
+                    const vector& disp = parDisp[pOffset + pointI];
 
-                    forAll(meshPts, pointI)
+                    // Only update for non-zero displacement
+                    if (cmptMag(dPointField[gIndex]) < smallVec)
                     {
-                        const label gIndex = meshPts[pointI];
-                        const vector& disp = parDisp[pOffset + pointI];
-
-                        // Only update for non-zero displacement
-                        if (cmptMag(dPointField[gIndex]) < smallVec)
-                        {
-                            dPointField[gIndex] = disp;
-                        }
+                        dPointField[gIndex] = disp;
                     }
                 }
             }
-            else
+        }
+        else
+        {
+            label nDomainPoints = refPoints_.size();
+
+            forAll(procIndices_, pI)
             {
-                label nDomainPoints = refPoints_.size();
+                label proc = procIndices_[pI];
 
-                forAll(procIndices_, pI)
+                const Map<label>& pointMap = sendPointMap_[pI];
+
+                // Fetch reference to send / recv point buffers
+                vectorField& psField = sendPointBuffer_[pI];
+                vectorField& prField = recvPointBuffer_[pI];
+
+                // Fill the send buffer
+                forAllConstIter(Map<label>, pointMap, pIter)
                 {
-                    label proc = procIndices_[pI];
-
-                    const Map<label>& pointMap = sendPointMap_[pI];
-
-                    // Fetch reference to send / recv point buffers
-                    vectorField& psField = sendPointBuffer_[pI];
-                    vectorField& prField = recvPointBuffer_[pI];
-
-                    // Fill the send buffer
-                    forAllConstIter(Map<label>, pointMap, pIter)
+                    if (pIter.key() < nDomainPoints)
                     {
-                        if (pIter.key() < nDomainPoints)
-                        {
-                            psField[pIter()] = dPointField[pIter.key()];
-                        }
+                        psField[pIter()] = dPointField[pIter.key()];
                     }
-
-                    // Send to neighbour
-                    parWrite(proc, psField);
-
-                    // Receive from neighbour
-                    parRead(proc, prField);
                 }
 
-                // Wait for all transfers to complete.
-                OPstream::waitRequests();
-                IPstream::waitRequests();
+                // Send to neighbour
+                parWrite(proc, psField);
 
-                forAll(procIndices_, pI)
+                // Receive from neighbour
+                parRead(proc, prField);
+            }
+
+            // Wait for all transfers to complete.
+            OPstream::waitRequests();
+            IPstream::waitRequests();
+
+            forAll(procIndices_, pI)
+            {
+                const Map<label>& pointMap = recvPointMap_[pI];
+
+                // Fetch reference to recv buffer
+                const vectorField& prField = recvPointBuffer_[pI];
+
+                forAllConstIter(Map<label>, pointMap, pIter)
                 {
-                    const Map<label>& pointMap = recvPointMap_[pI];
-
-                    // Fetch reference to recv buffer
-                    const vectorField& prField = recvPointBuffer_[pI];
-
-                    forAllConstIter(Map<label>, pointMap, pIter)
+                    // Only update points in this domain
+                    if (pIter() < nDomainPoints)
                     {
-                        // Only update points in this domain
-                        if (pIter() < nDomainPoints)
+                        // Only update for non-zero displacement
+                        if (cmptMag(dPointField[pIter()]) < smallVec)
                         {
-                            // Only update for non-zero displacement
-                            if (cmptMag(dPointField[pIter()]) < smallVec)
-                            {
-                                dPointField[pIter()] = prField[pIter.key()];
-                            }
+                            dPointField[pIter()] = prField[pIter.key()];
                         }
                     }
                 }
             }
         }
+    }
 
-        // Now update refPoints with patch values
-        refPoints_ += dPointField;
+    // Apply boundary layer displacement
+    applyBoundaryLayerPatches(dPointField);
+
+    // Now update refPoints with displacement values
+    refPoints_ += dPointField;
+}
+
+
+// Apply boundary layer displacement
+void mesquiteMotionSolver::applyBoundaryLayerPatches(pointField& displacement)
+{
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
+    if (!optionsDict.found("boundaryLayerZones"))
+    {
+        return;
+    }
+
+    const pointZoneMesh& pZones = mesh().pointZones();
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+    const dictionary& bDict = optionsDict.subDict("boundaryLayerZones");
+
+    wordList blPatch = bDict.toc();
+
+    forAll(blPatch, wordI)
+    {
+        const word& patchName = blPatch[wordI];
+        const label patchIndex = boundary.findPatchID(patchName);
+
+        // Fetch mesh points for this patch
+        const labelList& mp = boundary[patchIndex].meshPoints();
+
+        // Compute the average displacement for this patch
+        vector avgDisp = vector::zero;
+
+        forAll(mp, pointI)
+        {
+            avgDisp += displacement[mp[pointI]];
+        }
+
+        label patchSize = mp.size();
+        reduce(patchSize, sumOp<label>());
+
+        if (patchSize > 0)
+        {
+            avgDisp /= scalar(patchSize);
+        }
+
+        // Now apply average displacement to all zone points
+        const wordList blZones(bDict.lookup(patchName));
+
+        forAll(blZones, zoneI)
+        {
+            const label zoneID = pZones.findZoneID(blZones[zoneI]);
+
+            if (zoneID == -1)
+            {
+                continue;
+            }
+
+            const pointZone& pLabels = pZones[zoneID];
+
+            forAll(pLabels, pointI)
+            {
+                displacement[pLabels[pointI]] = avgDisp;
+            }
+        }
     }
 }
 
