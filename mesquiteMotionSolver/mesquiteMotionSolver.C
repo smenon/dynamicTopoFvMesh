@@ -1286,6 +1286,9 @@ void mesquiteMotionSolver::initArrays()
 
     if (twoDMesh_)
     {
+        // Optionally fix additional zone points
+        initFixedZones();
+
         // Optionally fix additional boundary layer zone points
         initBoundaryLayerZones();
 
@@ -1714,25 +1717,7 @@ void mesquiteMotionSolver::initArrays()
     }
 
     // Optionally fix additional zone points
-    if (optionsDict.found("fixPointsZone"))
-    {
-        wordList fixZones = optionsDict.subDict("fixPointsZone").toc();
-
-        forAll(fixZones, zoneI)
-        {
-            label zoneID = mesh().pointZones().findZoneID(fixZones[zoneI]);
-
-            if (zoneID > -1)
-            {
-                const pointZone& pLabels = mesh().pointZones()[zoneID];
-
-                forAll(pLabels, pointI)
-                {
-                    fixFlags_[pLabels[pointI]] = 1;
-                }
-            }
-        }
-    }
+    initFixedZones();
 
     // Optionally fix additional boundary layer zone points
     initBoundaryLayerZones();
@@ -2953,6 +2938,69 @@ void mesquiteMotionSolver::initBoundaryLayerZones()
                 {
                     fixFlags_[pLabels[pointI]] = 1;
                 }
+            }
+        }
+    }
+}
+
+
+// Prepare flags for fixed zones
+void mesquiteMotionSolver::initFixedZones()
+{
+    const dictionary& optionsDict = subDict("mesquiteOptions");
+
+    if (!optionsDict.found("fixPointsZone"))
+    {
+        return;
+    }
+
+    const pointZoneMesh& pZones = mesh().pointZones();
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+    const dictionary& bDict = optionsDict.subDict("fixPointsZone");
+
+    wordList fixZones = bDict.toc();
+
+    forAll(fixZones, zoneI)
+    {
+        label zoneID = mesh().pointZones().findZoneID(fixZones[zoneI]);
+
+        if (zoneID == -1)
+        {
+            continue;
+        }
+
+        const pointZone& pLabels = pZones[zoneID];
+
+        if (twoDMesh_)
+        {
+            forAll(pIDs_, patchI)
+            {
+                const label pOffset = offsets_[patchI];
+                const polyPatch& bPatch = boundary[pIDs_[patchI]];
+
+                forAll(pLabels, pointI)
+                {
+                    // Find local index in patch
+                    const label pLabel = pLabels[pointI];
+                    const label local = bPatch.whichPoint(pLabel);
+
+                    if (local == -1)
+                    {
+                        continue;
+                    }
+
+                    const label fieldIndex = local + pOffset;
+
+                    // Modify boundary condition
+                    bdy_[fieldIndex] = vector::zero;
+                }
+            }
+        }
+        else
+        {
+            forAll(pLabels, pointI)
+            {
+                fixFlags_[pLabels[pointI]] = 1;
             }
         }
     }

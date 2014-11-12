@@ -288,6 +288,9 @@ class mesquiteMotionSolver
         // Prepare flags for boundary layer zones
         void initBoundaryLayerZones();
 
+        // Prepare flags for fixed zones
+        void initFixedZones();
+
         // Compute centroids based on up-to-date point positions
         void computeCentroids
         (
