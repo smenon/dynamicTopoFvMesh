@@ -109,8 +109,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Define the edges on the face to be collapsed
-    FixedList<edge,4> checkEdge(edge(-1, -1));
-    FixedList<label,4> checkEdgeIndex(-1);
+    FixedList<edge, 4> checkEdge(edge(-1, -1));
+    FixedList<label, 4> checkEdgeIndex(-1);
 
     // Define checkEdges
     getCheckEdges(fIndex, (*this), map, checkEdge, checkEdgeIndex);
@@ -588,8 +588,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             }
 
             // Determine checkEdges for the slave
-            FixedList<edge,4> slaveCheckEdge(edge(-1, -1));
-            FixedList<label,4> slaveCheckEdgeIndex(-1);
+            FixedList<edge, 4> slaveCheckEdge(edge(-1, -1));
+            FixedList<label, 4> slaveCheckEdgeIndex(-1);
 
             if (localCouple)
             {
@@ -853,6 +853,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
                     // Build a hull of cells and tri-faces
                     // that are connected to the slave edge
+                    bool slaveNonPrism;
                     labelList slaveHullCells;
                     labelList slaveHullTriFaces;
 
@@ -865,7 +866,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         sMesh.neighbour_,
                         sMesh.edgeFaces_,
                         slaveHullTriFaces,
-                        slaveHullCells
+                        slaveHullCells,
+                        slaveNonPrism
                     );
 
                     bool infeasible = false;
@@ -1082,6 +1084,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Build a hull of cells and tri-faces that are connected to each edge
+    FixedList<bool, 2> nonPrism;
     FixedList<labelList, 2> hullCells;
     FixedList<labelList, 2> hullTriFaces;
 
@@ -1094,7 +1097,8 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         neighbour_,
         edgeFaces_,
         hullTriFaces[0],
-        hullCells[0]
+        hullCells[0],
+        nonPrism[0]
     );
 
     meshOps::constructPrismHull
@@ -1106,17 +1110,18 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         neighbour_,
         edgeFaces_,
         hullTriFaces[1],
-        hullCells[1]
+        hullCells[1],
+        nonPrism[1]
     );
 
     // Determine the neighbouring cells
     label c0 = owner_[fIndex], c1 = neighbour_[fIndex];
 
     // Define variables for the prism-face calculation
-    FixedList<label,2> c0BdyIndex(-1), c0IntIndex(-1);
-    FixedList<label,2> c1BdyIndex(-1), c1IntIndex(-1);
-    FixedList<face,2> c0BdyFace(face(3)), c0IntFace(face(4));
-    FixedList<face,2> c1BdyFace(face(3)), c1IntFace(face(4));
+    FixedList<label, 2> c0BdyIndex(-1), c0IntIndex(-1);
+    FixedList<label, 2> c1BdyIndex(-1), c1IntIndex(-1);
+    FixedList<face, 2> c0BdyFace(face(3)), c0IntFace(face(4));
+    FixedList<face, 2> c1BdyFace(face(3)), c1IntFace(face(4));
 
     // Find the prism-faces
     meshOps::findPrismFaces
@@ -1159,11 +1164,23 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     if (edgeBoundary[0] && !edgeBoundary[1])
     {
+        // Check if the non-boundary edge lies on a non-prism cell
+        if (nonPrism[1])
+        {
+            return map;
+        }
+
         collapseCase = 1;
     }
     else
     if (!edgeBoundary[0] && edgeBoundary[1])
     {
+        // Check if the non-boundary edge lies on a non-prism cell
+        if (nonPrism[0])
+        {
+            return map;
+        }
+
         collapseCase = 2;
     }
     else
@@ -1193,6 +1210,17 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             // Bail out for now. If proximity based refinement is
             // switched on, mesh may be sliced at this point.
             return map;
+        }
+
+        // Check if either edge lies on a non-prism cell
+        if (nonPrism[0])
+        {
+            nBoundCurves[0] = true;
+        }
+
+        if (nonPrism[1])
+        {
+            nBoundCurves[1] = true;
         }
 
         // Check if either edge lies on a bounding curve.
@@ -1230,6 +1258,25 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
     }
     else
+    if (nonPrism[0] && !nonPrism[1])
+    {
+        // Collapse towards a non-prism cell on edge[0]
+        collapseCase = 1;
+    }
+    else
+    if (!nonPrism[0] && nonPrism[1])
+    {
+        // Collapse towards a non-prism cell on edge[1]
+        collapseCase = 2;
+    }
+    else
+    if (nonPrism[0] && nonPrism[1])
+    {
+        // Both edges are connected to non-prism cells,
+        // so a collapse is not possible
+        return map;
+    }
+    else
     {
         // Looks like this is an interior face.
         // Collapse case [3] by default
@@ -1249,7 +1296,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     FixedList<point, 2> oldPoint(vector::zero);
 
     // Replacement check points
-    FixedList<label,2> original(-1), replacement(-1);
+    FixedList<label, 2> original(-1), replacement(-1);
 
     switch (collapseCase)
     {
@@ -1648,9 +1695,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Edges / Quad-faces to throw or keep during collapse
-    FixedList<label,2> ends(-1);
-    FixedList<label,2> faceToKeep(-1), faceToThrow(-1);
-    FixedList<label,4> edgeToKeep(-1), edgeToThrow(-1);
+    FixedList<label, 2> ends(-1);
+    FixedList<label, 2> faceToKeep(-1), faceToThrow(-1);
+    FixedList<label, 4> edgeToKeep(-1), edgeToThrow(-1);
 
     // Maintain a list of modified faces for mapping
     DynamicList<label> modifiedFaces(10);
@@ -2472,7 +2519,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     }
 
     // Ensure proper orientation for the two retained faces
-    FixedList<label,2> cellCheck(0);
+    FixedList<label, 2> cellCheck(0);
 
     if (owner_[faceToThrow[0]] == c0)
     {
@@ -4781,7 +4828,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
     );
 
     // Check whether points of the edge lies on a boundary
-    const FixedList<bool,2> edgeBoundary = checkEdgeBoundary(eIndex);
+    const FixedList<bool, 2> edgeBoundary = checkEdgeBoundary(eIndex);
     FixedList<label, 2> nBoundCurves(0), nProcCurves(0), checkPoints(-1);
 
     // Decide on collapseCase

@@ -64,13 +64,17 @@ inline void constructPrismHull
     const UList<label>& neighbour,
     const UList<labelList>& edgeFaces,
     labelList& hullTriFaces,
-    labelList& hullCells
+    labelList& hullCells,
+    bool& nonPrismCell
 )
 {
     labelHashSet cellSet, triFaceSet;
 
     // Obtain references
     const labelList& eFaces = edgeFaces[eIndex];
+
+    // Initialize flag for non-prism cell
+    nonPrismCell = false;
 
     // Loop through edgeFaces and add cells
     forAll(eFaces, faceI)
@@ -86,6 +90,11 @@ inline void constructPrismHull
             // Find associated triFaces and add them too
             const cell& cC = cells[c0];
 
+            if (cC.size() != 5)
+            {
+                nonPrismCell = true;
+            }
+
             forAll(cC, faceJ)
             {
                 const face& cF = faces[cC[faceJ]];
@@ -97,13 +106,23 @@ inline void constructPrismHull
             }
         }
 
-        if (!cellSet.found(c1) && (c1 != -1))
+        if (c1 == -1)
+        {
+            continue;
+        }
+
+        if (!cellSet.found(c1))
         {
             // Add this cell
             cellSet.insert(c1);
 
             // Find associated triFaces and add them too
             const cell& cC = cells[c1];
+
+            if (cC.size() != 5)
+            {
+                nonPrismCell = true;
+            }
 
             forAll(cC, faceJ)
             {

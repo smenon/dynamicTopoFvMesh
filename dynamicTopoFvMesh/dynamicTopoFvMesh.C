@@ -2413,12 +2413,19 @@ void dynamicTopoFvMesh::edgeRefinementEngine
     dynamicTopoFvMesh& mesh = thread->reference();
 
     // Figure out which thread this is...
-    label tIndex = mesh.self();
+    const label tIndex = mesh.self();
 
     // Set the timer
     clockTime sTimer;
 
+    // Fetch the reference to the scale estimator
+    const lengthScaleEstimator& scaleEstimator = mesh.lengthEstimator();
+
+    const scalar ratioMin = scaleEstimator.ratioMin();
+    const scalar ratioMax = scaleEstimator.ratioMax();
+
     bool reported = false;
+    scalar lengthSqr = 0.0, scale = 0.0;
     label stackSize = mesh.stack(tIndex).size();
     scalar interval = mesh.reportInterval(), oIndex = 0.0, nIndex = 0.0;
 
@@ -2459,7 +2466,15 @@ void dynamicTopoFvMesh::edgeRefinementEngine
         // Retrieve an entity from the stack
         label eIndex = mesh.stack(tIndex).pop();
 
-        if (mesh.checkBisection(eIndex))
+        // Fetch the entity length and scale
+        bool valid = mesh.getEntityLengthScale(eIndex, lengthSqr, scale);
+
+        if (!valid)
+        {
+            continue;
+        }
+
+        if (lengthSqr > Foam::magSqr(ratioMax * scale))
         {
             if (thread->master())
             {
@@ -2473,7 +2488,7 @@ void dynamicTopoFvMesh::edgeRefinementEngine
             }
         }
         else
-        if (mesh.checkCollapse(eIndex))
+        if (lengthSqr < Foam::magSqr(ratioMin * scale))
         {
             if (thread->master())
             {

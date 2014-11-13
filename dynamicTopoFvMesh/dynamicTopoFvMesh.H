@@ -368,6 +368,9 @@ class dynamicTopoFvMesh
         // Return if mesh is 3D
         inline bool is3D() const;
 
+        // Return if the face is surrounded by triangle prisms
+        inline bool isTriPrismFace(const label index) const;
+
         // Return a non-const reference to the lengthScaleEstimator
         inline lengthScaleEstimator& lengthEstimator();
 
@@ -403,11 +406,13 @@ class dynamicTopoFvMesh
         // Return length-scale at an edge-location in the mesh [3D]
         scalar edgeLengthScale(const label eIndex) const;
 
-        // Check for bisection
-        inline bool checkBisection(const label index) const;
-
-        // Check for collapse
-        inline bool checkCollapse(const label index) const;
+        // Fetch the entity length and scale
+        inline bool getEntityLengthScale
+        (
+            const label index,
+            scalar& lengthSqr,
+            scalar& scale
+        ) const;
 
         // MultiThreaded topology modifier
         void threadedTopoModifier();

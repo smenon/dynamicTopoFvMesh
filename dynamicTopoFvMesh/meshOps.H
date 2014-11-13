@@ -103,7 +103,8 @@ namespace meshOps
         const UList<label>& neighbour,
         const UList<labelList>& edgeFaces,
         labelList& hullTriFaces,
-        labelList& hullCells
+        labelList& hullCells,
+        bool& nonPrismCell
     );
 
     // Utility method to build a hull of cells (and faces)

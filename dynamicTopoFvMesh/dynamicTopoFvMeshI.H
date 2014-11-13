@@ -62,6 +62,24 @@ inline bool dynamicTopoFvMesh::is3D() const
 }
 
 
+// Return if the face is surrounded by triangle prisms
+inline bool dynamicTopoFvMesh::isTriPrismFace(const label index) const
+{
+    const label own = owner_[index], nei = neighbour_[index];
+
+    if
+    (
+        (cells_[own].size() == 5)
+     && ((nei == -1) || ((nei > -1) && (cells_[nei].size() == 5)))
+    )
+    {
+        return true;
+    }
+
+    return false;
+}
+
+
 // Return a non-const reference to the lengthScaleEstimator
 inline lengthScaleEstimator&
 dynamicTopoFvMesh::lengthEstimator()
@@ -213,18 +231,19 @@ inline label dynamicTopoFvMesh::getTriBoundaryEdge
 }
 
 
-// Check for edge bisection
-inline bool dynamicTopoFvMesh::checkBisection
+// Fetch the entity length and scale
+// - Return true if the entity is valid, and false otherwise
+inline bool dynamicTopoFvMesh::getEntityLengthScale
 (
-    const label index
+    const label index,
+    scalar& lengthSqr,
+    scalar& scale
 ) const
 {
-    scalar length = 0.0, scale = 0.0;
-
     if (is2D())
     {
         // If this entity was deleted, skip it.
-        if (faces_[index].empty())
+        if (faces_[index].empty() || !isTriPrismFace(index))
         {
             return false;
         }
@@ -233,13 +252,16 @@ inline bool dynamicTopoFvMesh::checkBisection
         const edge& edgeToCheck = edges_[getTriBoundaryEdge(index)];
 
         // Measure the boundary edge-length of the face in question
-        length =
+        lengthSqr =
         (
-            linePointRef
+            Foam::magSqr
             (
-                points_[edgeToCheck.start()],
-                points_[edgeToCheck.end()]
-            ).mag()
+                linePointRef
+                (
+                    points_[edgeToCheck[0]],
+                    points_[edgeToCheck[1]]
+                ).vec()
+            )
         );
 
         // Determine the length-scale at this face
@@ -257,95 +279,24 @@ inline bool dynamicTopoFvMesh::checkBisection
         const edge& edgeToCheck = edges_[index];
 
         // Measure the edge-length
-        length =
+        lengthSqr =
         (
-            linePointRef
+            Foam::magSqr
             (
-                points_[edgeToCheck.start()],
-                points_[edgeToCheck.end()]
-            ).mag()
+                linePointRef
+                (
+                    points_[edgeToCheck[0]],
+                    points_[edgeToCheck[1]]
+                ).vec()
+            )
         );
 
         // Determine the length-scale at this point in the mesh
         scale = edgeLengthScale(index);
     }
 
-    if (length > lengthEstimator().ratioMax() * scale)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
-}
-
-
-// Check for edge collapse
-inline bool dynamicTopoFvMesh::checkCollapse
-(
-    const label index
-) const
-{
-    scalar length = 0.0, scale = 0.0;
-
-    if (is2D())
-    {
-        // If this entity was deleted, skip it.
-        if (faces_[index].empty())
-        {
-            return false;
-        }
-
-        // Fetch the edge
-        const edge& edgeToCheck = edges_[getTriBoundaryEdge(index)];
-
-        // Measure the boundary edge-length of the face in question
-        length =
-        (
-            linePointRef
-            (
-                points_[edgeToCheck.start()],
-                points_[edgeToCheck.end()]
-            ).mag()
-        );
-
-        // Determine the length-scale at this face
-        scale = faceLengthScale(index);
-    }
-    else
-    {
-        // If this entity was deleted, skip it.
-        if (edgeFaces_[index].empty())
-        {
-            return false;
-        }
-
-        // Fetch the edge
-        const edge& edgeToCheck = edges_[index];
-
-        // Measure the edge-length
-        length =
-        (
-            linePointRef
-            (
-                points_[edgeToCheck.start()],
-                points_[edgeToCheck.end()]
-            ).mag()
-        );
-
-        // Determine the length-scale at this point in the mesh
-        scale = edgeLengthScale(index);
-    }
-
-    if (length < lengthEstimator().ratioMin() * scale)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
+    // Return a valid entity
+    return true;
 }
 
 

@@ -54,26 +54,10 @@ bool dynamicTopoFvMesh::testDelaunay
     FixedList<triFace, 2> triFaces(triFace(-1, -1, -1));
     FixedList<bool, 2> foundTriFace(false);
 
-    // If this entity was deleted, skip it.
-    if (faces_[fIndex].empty())
+    // If this entity was deleted or not shared by prism cells, skip it.
+    if (faces_[fIndex].empty() || !isTriPrismFace(fIndex))
     {
         return failed;
-    }
-
-    // If face is not shared by prism cells, skip it.
-    label own = owner_[fIndex], nei = neighbour_[fIndex];
-
-    if (cells_[own].size() != 5)
-    {
-        return failed;
-    }
-
-    if (nei > -1)
-    {
-        if (cells_[nei].size() != 5)
-        {
-            return failed;
-        }
     }
 
     // Boundary faces are discarded.
