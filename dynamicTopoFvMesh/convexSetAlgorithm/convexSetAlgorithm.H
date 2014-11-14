@@ -156,13 +156,12 @@ public:
         (
             const label index,
             const label offset,
-            const labelList& mapCandidates,
             const labelListList& oldNeighbourList,
             labelList& parents,
             scalarField& weights,
             vectorField& centres,
             bool output = false
-        );
+        ) const;
 
         // Write out connectivity information to disk
         bool write() const;

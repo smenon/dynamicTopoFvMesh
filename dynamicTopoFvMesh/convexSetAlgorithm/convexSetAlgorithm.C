@@ -82,14 +82,15 @@ void convexSetAlgorithm::computeWeights
 (
     const label index,
     const label offset,
-    const labelList& mapCandidates,
     const labelListList& oldNeighbourList,
     labelList& parents,
     scalarField& weights,
     vectorField& centres,
     bool output
-)
+) const
 {
+    const labelList mapCandidates;
+
     if (parents.size() || weights.size() || centres.size())
     {
         FatalErrorIn
@@ -105,7 +106,7 @@ void convexSetAlgorithm::computeWeights
             "    scalarField& weights,\n"
             "    vectorField& centres,\n"
             "    bool output\n"
-            ")\n"
+            ") const\n"
         )
             << " Addressing has already been calculated." << nl
             << " Index: " << index << nl

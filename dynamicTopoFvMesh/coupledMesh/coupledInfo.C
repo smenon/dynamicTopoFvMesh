@@ -30,6 +30,9 @@ License
 #include "processorPolyPatch.H"
 #include "fixedValueFvPatchFields.H"
 
+#include "faceSetAlgorithm.H"
+#include "cellSetAlgorithm.H"
+
 namespace Foam
 {
 
@@ -150,6 +153,24 @@ void coupledInfo<MeshType>::setMesh
 }
 
 
+// Set the faceAlgorithm
+template <class MeshType>
+inline void
+coupledInfo<MeshType>::setFaceAlgorithm(faceSetAlgorithm* algorithm)
+{
+    faceAlgorithm_.set(algorithm);
+}
+
+
+// Set the cellAlgorithm
+template <class MeshType>
+inline void
+coupledInfo<MeshType>::setCellAlgorithm(cellSetAlgorithm* algorithm)
+{
+    cellAlgorithm_.set(algorithm);
+}
+
+
 // Return a reference to the subMesh
 template <class MeshType>
 MeshType& coupledInfo<MeshType>::subMesh()
@@ -209,6 +230,38 @@ template <class MeshType>
 const coupleMap& coupledInfo<MeshType>::map() const
 {
     return map_;
+}
+
+
+// Return a const reference to the faceAlgorithm
+template <class MeshType>
+inline const faceSetAlgorithm&
+coupledInfo<MeshType>::faceAlgorithm() const
+{
+    if (!faceAlgorithm_.valid())
+    {
+        FatalErrorIn("const faceSetAlgorithm& coupledInfo::faceAlgorithm()")
+            << " Algorithm pointer has not been set."
+            << abort(FatalError);
+    }
+
+    return faceAlgorithm_();
+}
+
+
+// Return a const reference to the cellAlgorithm
+template <class MeshType>
+inline const cellSetAlgorithm&
+coupledInfo<MeshType>::cellAlgorithm() const
+{
+    if (!cellAlgorithm_.valid())
+    {
+        FatalErrorIn("const cellSetAlgorithm& coupledInfo::cellAlgorithm()")
+            << " Algorithm pointer has not been set."
+            << abort(FatalError);
+    }
+
+    return cellAlgorithm_();
 }
 
 

@@ -4040,12 +4040,6 @@ bool dynamicTopoFvMesh::resetMesh()
             recvBuffer
         );
 
-        // Set sizes for mapping
-        faceWeights_.setSize(facesFromFaces_.size(), scalarField(0));
-        faceCentres_.setSize(facesFromFaces_.size(), vectorField(0));
-        cellWeights_.setSize(cellsFromCells_.size(), scalarField(0));
-        cellCentres_.setSize(cellsFromCells_.size(), vectorField(0));
-
         // Determine if mapping is to be skipped
         // Optionally skip mapping for remeshing-only / pre-processing
         bool skipMapping = false;

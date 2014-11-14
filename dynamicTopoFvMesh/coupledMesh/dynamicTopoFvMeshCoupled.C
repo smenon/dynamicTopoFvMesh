@@ -9853,9 +9853,42 @@ void dynamicTopoFvMesh::initCoupledWeights()
 
     forAll(procIndices_, pI)
     {
-        // Fetch reference to subMesh
-        const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+        coupledMesh& recvMesh = recvMeshes_[pI];
 
+        // Fetch reference to subMesh
+        const dynamicTopoFvMesh& mesh = recvMesh.subMesh();
+
+        // Set the face algorithm
+        recvMesh.setFaceAlgorithm
+        (
+            new faceSetAlgorithm
+            (
+                mesh,
+                oldPoints_,
+                edges_,
+                faces_,
+                cells_,
+                owner_,
+                neighbour_
+            )
+        );
+
+        // Set the cell algorithm
+        recvMesh.setCellAlgorithm
+        (
+            new cellSetAlgorithm
+            (
+                mesh,
+                oldPoints_,
+                edges_,
+                faces_,
+                cells_,
+                owner_,
+                neighbour_
+            )
+        );
+
+        // Pre-compute demand-driven data
         mesh.cells();
         mesh.cellCells();
         mesh.cellPoints();
@@ -9892,8 +9925,6 @@ void dynamicTopoFvMesh::computeCoupledWeights
 
     if (dimension == 2)
     {
-        DynamicList<label> faceParents(10);
-
         label patchIndex = whichPatch(index);
 
         forAll(procIndices_, pI)
@@ -9909,24 +9940,14 @@ void dynamicTopoFvMesh::computeCoupledWeights
             }
 
             // Fetch reference to subMesh
-            const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+            const coupledMesh& recvMesh = recvMeshes_[pI];
+            const dynamicTopoFvMesh& mesh = recvMesh.subMesh();
+            const faceSetAlgorithm& faceAlgorithm = recvMesh.faceAlgorithm();
 
             // Prepare lists
             labelList coupleObjects;
             scalarField coupleWeights;
             vectorField coupleCentres;
-
-            // Convex-set algorithm for faces
-            faceSetAlgorithm faceAlgorithm
-            (
-                mesh,
-                oldPoints_,
-                edges_,
-                faces_,
-                cells_,
-                owner_,
-                neighbour_
-            );
 
             // Initialize the bounding box
             faceAlgorithm.computeNormFactor(index);
@@ -9937,12 +9958,20 @@ void dynamicTopoFvMesh::computeCoupledWeights
             label pSize = boundary[patchIndex].size();
             label pStart = boundary[patchIndex].start();
 
+            bool notContained = true;
+
             for (label faceI = pStart; faceI < (pStart + pSize); faceI++)
             {
                 if (faceAlgorithm.contains(faceI))
                 {
-                    faceParents.append(faceI);
+                    notContained = false;
+                    break;
                 }
+            }
+
+            if (notContained)
+            {
+                continue;
             }
 
             // Obtain weighting factors for this face.
@@ -9950,7 +9979,6 @@ void dynamicTopoFvMesh::computeCoupledWeights
             (
                 index,
                 pStart,
-                faceParents,
                 boundary[patchIndex].faceFaces(),
                 coupleObjects,
                 coupleWeights,
@@ -9982,37 +10010,22 @@ void dynamicTopoFvMesh::computeCoupledWeights
                     centres[indexI + oldSize] = coupleCentres[indexI];
                 }
             }
-
-            // Clear list
-            faceParents.clear();
         }
     }
     else
     if (dimension == 3)
     {
-        DynamicList<label> cellParents(10);
-
         forAll(procIndices_, pI)
         {
             // Fetch reference to subMesh
-            const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+            const coupledMesh& recvMesh = recvMeshes_[pI];
+            const dynamicTopoFvMesh& mesh = recvMesh.subMesh();
+            const cellSetAlgorithm& cellAlgorithm = recvMesh.cellAlgorithm();
 
             // Prepare lists
             labelList coupleObjects;
             scalarField coupleWeights;
             vectorField coupleCentres;
-
-            // Convex-set algorithm for cells
-            cellSetAlgorithm cellAlgorithm
-            (
-                mesh,
-                oldPoints_,
-                edges_,
-                faces_,
-                cells_,
-                owner_,
-                neighbour_
-            );
 
             // Initialize the bounding box
             cellAlgorithm.computeNormFactor(index);
@@ -10020,12 +10033,20 @@ void dynamicTopoFvMesh::computeCoupledWeights
             // Loop through all subMesh cells, and check for bounds
             const cellList& meshCells = mesh.cells();
 
+            bool notContained = true;
+
             forAll(meshCells, cellI)
             {
                 if (cellAlgorithm.contains(cellI))
                 {
-                    cellParents.append(cellI);
+                    notContained = false;
+                    break;
                 }
+            }
+
+            if (notContained)
+            {
+                continue;
             }
 
             // Obtain weighting factors for this cell.
@@ -10033,7 +10054,6 @@ void dynamicTopoFvMesh::computeCoupledWeights
             (
                 index,
                 0,
-                cellParents,
                 mesh.polyMesh::cellCells(),
                 coupleObjects,
                 coupleWeights,
@@ -10064,9 +10084,6 @@ void dynamicTopoFvMesh::computeCoupledWeights
                     centres[indexI + oldSize] = coupleCentres[indexI];
                 }
             }
-
-            // Clear list
-            cellParents.clear();
         }
     }
     else

@@ -216,11 +216,11 @@ class dynamicTopoFvMesh
         Map<label> addedCellZones_;
 
         // Information for field-mapping
-        Map<labelList> faceParents_;
+        labelHashSet faceParents_;
         List<scalarField> faceWeights_;
         List<vectorField> faceCentres_;
 
-        Map<labelList> cellParents_;
+        labelHashSet cellParents_;
         List<scalarField> cellWeights_;
         List<vectorField> cellCentres_;
 
@@ -330,7 +330,9 @@ class dynamicTopoFvMesh
             const label faceStart,
             const label faceSize,
             const label cellStart,
-            const label cellSize
+            const label cellSize,
+            const convexSetAlgorithm& faceAlgorithm,
+            const convexSetAlgorithm& cellAlgorithm
         );
 
         // Static equivalent for multiThreading
