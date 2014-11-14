@@ -89,8 +89,6 @@ void convexSetAlgorithm::computeWeights
     bool output
 ) const
 {
-    const labelList mapCandidates;
-
     if (parents.size() || weights.size() || centres.size())
     {
         FatalErrorIn
@@ -100,7 +98,6 @@ void convexSetAlgorithm::computeWeights
             "(\n"
             "    const label index,\n"
             "    const label offset,\n"
-            "    const labelList& mapCandidates,\n"
             "    const labelListList& oldNeighbourList,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
@@ -112,7 +109,6 @@ void convexSetAlgorithm::computeWeights
             << " Index: " << index << nl
             << " Offset: " << offset << nl
             << " Type: " << (dimension() == 2 ? "Face" : "Cell") << nl
-            << " mapCandidates: " << mapCandidates << nl
             << " Parents: " << parents << nl
             << " Weights: " << weights << nl
             << " Centres: " << centres << nl
@@ -120,7 +116,7 @@ void convexSetAlgorithm::computeWeights
     }
 
     // Do nothing for empty lists
-    if (mapCandidates.empty() || oldNeighbourList.empty())
+    if (oldNeighbourList.empty())
     {
         return;
     }
@@ -130,6 +126,9 @@ void convexSetAlgorithm::computeWeights
 
     // Calculate the algorithm normFactor
     computeNormFactor(index);
+
+    // Find the nearest candidate for mapping
+    label mapCandidate = findMappingCandidate(refCentre_);
 
     // Maintain a check-list
     labelHashSet checked, skipped;
@@ -145,7 +144,7 @@ void convexSetAlgorithm::computeWeights
 
         if (nAttempts == 0)
         {
-            checkList = mapCandidates;
+            checkList = labelList(1, mapCandidate);
         }
         else
         {
@@ -218,13 +217,7 @@ void convexSetAlgorithm::computeWeights
             // Need to setup a rescue mechanism.
             labelHashSet rescue;
 
-            forAll(mapCandidates, cI)
-            {
-                if (!rescue.found(mapCandidates[cI] - offset))
-                {
-                    rescue.insert(mapCandidates[cI] - offset);
-                }
-            }
+            rescue.insert(mapCandidate - offset);
 
             for (label level = 0; level < 10; level++)
             {

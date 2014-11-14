@@ -49,6 +49,7 @@ SourceFiles
 #include "boundBox.H"
 #include "objectMap.H"
 #include "vectorField.H"
+#include "indexedOctree.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -65,6 +66,94 @@ class convexSetAlgorithm
 {
 
 protected:
+
+    // Protected classes
+
+        // Class for encapsulation of mapping search data
+        class mappingTreeData
+        {
+            // Private data
+
+                // Reference to point list
+                const UList<point>& points_;
+
+        public:
+
+            //- Run-time type information
+            ClassName("mappingTreeData");
+
+            // Constructors
+
+                // Construct from point list
+                mappingTreeData(const UList<point>& points);
+
+            // Member Functions
+
+                // Return the number of shapes
+                inline label size() const
+                {
+                    return points_.size();
+                }
+
+                // Return whether the shape at index
+                // overlaps the bounding box
+                inline bool overlaps
+                (
+                    const label index,
+                    const treeBoundBox& sampleBox
+                ) const
+                {
+                    return sampleBox.contains(points_[index]);
+                }
+
+                inline const UList<point>& points() const
+                {
+                    return points_;
+                }
+
+            // Public sub classes
+
+                // Class for nearest candidate search
+                class findNearestOp
+                {
+                    // Reference to search tree
+                    const indexedOctree<mappingTreeData>& tree_;
+
+                public:
+
+                    findNearestOp(const indexedOctree<mappingTreeData>& tree)
+                    :
+                        tree_(tree)
+                    {}
+
+                    inline void operator()
+                    (
+                        const labelUList& indices,
+                        const point& sample,
+                        scalar& nearestDistSqr,
+                        label& minIndex,
+                        point& nearestPoint
+                    ) const
+                    {
+                        const mappingTreeData& shapes = tree_.shapes();
+                        const UList<point>& points = shapes.points();
+
+                        forAll(indices, indexI)
+                        {
+                            const label checkIndex = indices[indexI];
+                            const point& checkPoint = points[checkIndex];
+                            const scalar distSqr = magSqr(sample - checkPoint);
+
+                            if (distSqr < nearestDistSqr)
+                            {
+                                minIndex = checkIndex;
+                                nearestDistSqr = distSqr;
+                                nearestPoint = checkPoint;
+                            }
+                        }
+                    }
+                };
+        };
 
     // Protected data
 
@@ -89,6 +178,7 @@ protected:
         //- Internal data members
         mutable boundBox box_;
         mutable vector refNorm_;
+        mutable vector refCentre_;
         mutable scalar normFactor_;
         mutable vectorField centres_;
         mutable scalarField weights_;
@@ -141,6 +231,9 @@ public:
 
         // Compute normFactor
         virtual void computeNormFactor(const label index) const = 0;
+
+        // Find the nearest mapping candidate
+        virtual label findMappingCandidate(const point& pt) const = 0;
 
         // Compute intersections
         virtual bool computeIntersection

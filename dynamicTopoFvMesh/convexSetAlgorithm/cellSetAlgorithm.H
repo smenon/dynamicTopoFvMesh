@@ -57,6 +57,11 @@ class cellSetAlgorithm
     public convexSetAlgorithm
 {
 
+    // Private member data
+
+        //- Tree for candidate search
+        indexedOctree<mappingTreeData> searchTree_;
+
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -102,6 +107,9 @@ public:
 
         // Compute normFactor
         virtual void computeNormFactor(const label index) const;
+
+        // Find the nearest mapping candidate
+        virtual label findMappingCandidate(const point& pt) const;
 
         // Check whether the bounding box contains the entity
         virtual bool contains(const label index) const;

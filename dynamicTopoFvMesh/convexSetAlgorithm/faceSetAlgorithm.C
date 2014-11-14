@@ -70,6 +70,28 @@ faceSetAlgorithm::faceSetAlgorithm
         newCells,
         newOwner,
         newNeighbour
+    ),
+    searchTree_
+    (
+        mappingTreeData
+        (
+            SubList<point>
+            (
+                mesh.faceCentres(),
+                mesh.nFaces() - mesh.nInternalFaces(),
+                mesh.nInternalFaces()
+            )
+        ),
+        treeBoundBox
+        (
+            SubList<point>
+            (
+                mesh.faceCentres(),
+                mesh.nFaces() - mesh.nInternalFaces(),
+                mesh.nInternalFaces()
+            )
+        ),
+        8, 10.0, 5.0
     )
 {}
 
@@ -86,6 +108,7 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
 
     // Compute refNorm and normFactor
     refNorm_ = newFaces_[index].normal(newPoints_);
+    refCentre_ = newFaces_[index].centre(newPoints_);
     normFactor_ = mag(refNorm_);
 
     // Normalize for later use
@@ -100,6 +123,17 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
     // Scale it by a bit
     box_.min() += (1.5 * minToXb);
     box_.max() += (1.5 * maxToXb);
+}
+
+
+// Find the nearest mapping candidate
+label faceSetAlgorithm::findMappingCandidate(const point& pt) const
+{
+    const scalar nearestDistSqr = GREAT;
+
+    pointIndexHit hit = searchTree_.findNearest(pt, nearestDistSqr);
+
+    return hit.index();
 }
 
 

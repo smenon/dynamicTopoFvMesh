@@ -70,6 +70,12 @@ cellSetAlgorithm::cellSetAlgorithm
         newCells,
         newOwner,
         newNeighbour
+    ),
+    searchTree_
+    (
+        mappingTreeData(mesh.cellCentres()),
+        treeBoundBox(mesh.cellCentres()),
+        8, 10.0, 5.0
     )
 {}
 
@@ -84,7 +90,7 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
     centres_.clear();
     weights_.clear();
 
-    // Compute volume / centre (using refNorm_ as centre)
+    // Compute volume / centre
     meshOps::cellCentreAndVolume
     (
         index,
@@ -92,7 +98,7 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
         newFaces_,
         newCells_,
         newOwner_,
-        refNorm_,
+        refCentre_,
         normFactor_
     );
 
@@ -105,6 +111,17 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
     // Scale it by a bit
     box_.min() += (1.5 * minToXb);
     box_.max() += (1.5 * maxToXb);
+}
+
+
+// Find the nearest mapping candidate
+label cellSetAlgorithm::findMappingCandidate(const point& pt) const
+{
+    const scalar nearestDistSqr = GREAT;
+
+    pointIndexHit hit = searchTree_.findNearest(pt, nearestDistSqr);
+
+    return hit.index();
 }
 
 
