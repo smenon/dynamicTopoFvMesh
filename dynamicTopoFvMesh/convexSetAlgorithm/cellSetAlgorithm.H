@@ -57,6 +57,10 @@ class cellSetAlgorithm
     public convexSetAlgorithm
 {
 
+    // Private typedefs
+
+        typedef FixedList<point, 4> TetPoints;
+
     // Private member data
 
         //- Tree for candidate search
@@ -74,7 +78,7 @@ class cellSetAlgorithm
         void writeVTK
         (
             const word&,
-            const List<FixedList<point, 4> >&
+            const List<TetPoints>&
         ) const;
 
 public:
@@ -110,6 +114,9 @@ public:
 
         // Find the nearest mapping candidate
         virtual label findMappingCandidate(const point& pt) const;
+
+        // Write out mapping candidates
+        virtual void writeMappingCandidates() const;
 
         // Check whether the bounding box contains the entity
         virtual bool contains(const label index) const;

@@ -492,6 +492,12 @@ void dynamicTopoFvMesh::threadedMapping
         neighbour_
     );
 
+    if (mappingOutput)
+    {
+        faceAlgorithm.writeMappingCandidates();
+        cellAlgorithm.writeMappingCandidates();
+    }
+
     // Check if single-threaded
     if (nThreads == 1)
     {

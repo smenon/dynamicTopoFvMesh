@@ -35,6 +35,7 @@ Author
 
 SourceFiles
     convexSetAlgorithm.C
+    convexSetAlgorithmI.H
 
 \*---------------------------------------------------------------------------*/
 
@@ -70,90 +71,7 @@ protected:
     // Protected classes
 
         // Class for encapsulation of mapping search data
-        class mappingTreeData
-        {
-            // Private data
-
-                // Reference to point list
-                const UList<point>& points_;
-
-        public:
-
-            //- Run-time type information
-            ClassName("mappingTreeData");
-
-            // Constructors
-
-                // Construct from point list
-                mappingTreeData(const UList<point>& points);
-
-            // Member Functions
-
-                // Return the number of shapes
-                inline label size() const
-                {
-                    return points_.size();
-                }
-
-                // Return whether the shape at index
-                // overlaps the bounding box
-                inline bool overlaps
-                (
-                    const label index,
-                    const treeBoundBox& sampleBox
-                ) const
-                {
-                    return sampleBox.contains(points_[index]);
-                }
-
-                inline const UList<point>& points() const
-                {
-                    return points_;
-                }
-
-            // Public sub classes
-
-                // Class for nearest candidate search
-                class findNearestOp
-                {
-                    // Reference to search tree
-                    const indexedOctree<mappingTreeData>& tree_;
-
-                public:
-
-                    findNearestOp(const indexedOctree<mappingTreeData>& tree)
-                    :
-                        tree_(tree)
-                    {}
-
-                    inline void operator()
-                    (
-                        const labelUList& indices,
-                        const point& sample,
-                        scalar& nearestDistSqr,
-                        label& minIndex,
-                        point& nearestPoint
-                    ) const
-                    {
-                        const mappingTreeData& shapes = tree_.shapes();
-                        const UList<point>& points = shapes.points();
-
-                        forAll(indices, indexI)
-                        {
-                            const label checkIndex = indices[indexI];
-                            const point& checkPoint = points[checkIndex];
-                            const scalar distSqr = magSqr(sample - checkPoint);
-
-                            if (distSqr < nearestDistSqr)
-                            {
-                                minIndex = checkIndex;
-                                nearestDistSqr = distSqr;
-                                nearestPoint = checkPoint;
-                            }
-                        }
-                    }
-                };
-        };
+        class mappingTreeData;
 
     // Protected data
 
@@ -235,6 +153,9 @@ public:
         // Find the nearest mapping candidate
         virtual label findMappingCandidate(const point& pt) const = 0;
 
+        // Write out mapping candidates
+        virtual void writeMappingCandidates() const = 0;
+
         // Compute intersections
         virtual bool computeIntersection
         (
@@ -282,6 +203,10 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 } // End namespace Foam
+
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "convexSetAlgorithmI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

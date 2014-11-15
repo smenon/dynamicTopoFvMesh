@@ -125,6 +125,24 @@ label cellSetAlgorithm::findMappingCandidate(const point& pt) const
 }
 
 
+// Write out mapping candidates
+void cellSetAlgorithm::writeMappingCandidates() const
+{
+    // Fetch reference to tree points
+    const UList<point>& points = searchTree_.shapes().points();
+
+    // Write out points to VTK file
+    meshOps::writeVTK
+    (
+        mesh_,
+        "cellMappingCandidates",
+        identity(points.size()),
+        0,
+        points
+    );
+}
+
+
 // Check whether the bounding box contains the entity
 bool cellSetAlgorithm::contains(const label index) const
 {
@@ -166,8 +184,8 @@ bool cellSetAlgorithm::computeIntersection
     if (oldCell.size() > 4 || newCell.size() > 4)
     {
         // Decompose new / old cells
-        DynamicList<FixedList<point, 4> > clippingTets(15);
-        DynamicList<FixedList<point, 4> > subjectTets(15);
+        DynamicList<TetPoints> clippingTets(15);
+        DynamicList<TetPoints> subjectTets(15);
 
         label ntOld = 0, ntNew = 0;
         vector oldCentre = vector::zero, newCentre = vector::zero;
@@ -332,7 +350,7 @@ bool cellSetAlgorithm::computeIntersection
     else
     {
         // Configure points for clipping tetrahedron
-        FixedList<point, 4> clippingTet(vector::zero);
+        TetPoints clippingTet(vector::zero);
 
         // Configure the clipping tetrahedron.
         const face& firstNewFace = newFaces_[newCell[0]];
@@ -355,7 +373,7 @@ bool cellSetAlgorithm::computeIntersection
         clippingTet[3] = newPoints[fourthNewPoint];
 
         // Configure points for subject tetrahedron
-        FixedList<point, 4> subjectTet(vector::zero);
+        TetPoints subjectTet(vector::zero);
 
         // Configure the subject tetrahedron.
         const face& firstOldFace = mesh_.faces()[oldCell[0]];
@@ -400,7 +418,7 @@ bool cellSetAlgorithm::computeIntersection
                     (
                         "tetIntersectNew_"
                       + Foam::name(newIndex),
-                        List<FixedList<point, 4> >(1, clippingTet)
+                        List<TetPoints>(1, clippingTet)
                     );
 
                     writeVTK
@@ -409,7 +427,7 @@ bool cellSetAlgorithm::computeIntersection
                       + Foam::name(newIndex)
                       + '_'
                       + Foam::name(oldIndex),
-                        List<FixedList<point, 4> >(1, subjectTet)
+                        List<TetPoints>(1, subjectTet)
                     );
 
                     writeVTK
@@ -442,7 +460,7 @@ bool cellSetAlgorithm::computeIntersection
 void cellSetAlgorithm::writeVTK
 (
     const word& name,
-    const List<FixedList<point, 4> >& tetList
+    const List<TetPoints>& tetList
 ) const
 {
     // Fill up all points

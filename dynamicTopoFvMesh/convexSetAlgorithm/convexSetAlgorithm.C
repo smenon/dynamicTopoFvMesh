@@ -50,6 +50,10 @@ Author
 namespace Foam
 {
 
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+defineTypeName(convexSetAlgorithm::mappingTreeData);
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
@@ -82,7 +86,7 @@ void convexSetAlgorithm::computeWeights
 (
     const label index,
     const label offset,
-    const labelListList& oldNeighbourList,
+    const labelListList& neighbourList,
     labelList& parents,
     scalarField& weights,
     vectorField& centres,
@@ -98,7 +102,7 @@ void convexSetAlgorithm::computeWeights
             "(\n"
             "    const label index,\n"
             "    const label offset,\n"
-            "    const labelListList& oldNeighbourList,\n"
+            "    const labelListList& neighbourList,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
             "    vectorField& centres,\n"
@@ -116,7 +120,7 @@ void convexSetAlgorithm::computeWeights
     }
 
     // Do nothing for empty lists
-    if (oldNeighbourList.empty())
+    if (neighbourList.empty())
     {
         return;
     }
@@ -144,7 +148,19 @@ void convexSetAlgorithm::computeWeights
 
         if (nAttempts == 0)
         {
-            checkList = labelList(1, mapCandidate);
+            // If an appropriate mapping candidate is not available,
+            // prevent accidental addressing out of bounds
+            // and revert to the rescue mechanism
+            const label neighbourListSize = (neighbourList.size() + offset);
+
+            if (mapCandidate < offset || mapCandidate >= neighbourListSize)
+            {
+                mapCandidate = offset;
+            }
+            else
+            {
+                checkList = labelList(1, mapCandidate);
+            }
         }
         else
         {
@@ -161,7 +177,7 @@ void convexSetAlgorithm::computeWeights
             }
             else
             {
-                checkEntities = oldNeighbourList[checkList[indexI]];
+                checkEntities = neighbourList[checkList[indexI]];
             }
 
             forAll(checkEntities, entityI)
@@ -225,7 +241,7 @@ void convexSetAlgorithm::computeWeights
 
                 forAll(initList, fI)
                 {
-                    const labelList& ff = oldNeighbourList[initList[fI]];
+                    const labelList& ff = neighbourList[initList[fI]];
 
                     forAll(ff, entityI)
                     {

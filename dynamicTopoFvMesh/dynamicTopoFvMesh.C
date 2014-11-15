@@ -459,6 +459,14 @@ void dynamicTopoFvMesh::removeCell
             break;
         }
     }
+
+    // Remove from cellParents list, if necessary
+    labelHashSet::iterator cpsit = cellParents_.find(cIndex);
+
+    if (cpsit != cellParents_.end())
+    {
+        cellParents_.erase(cpsit);
+    }
 }
 
 
@@ -746,6 +754,14 @@ void dynamicTopoFvMesh::removeFace
     if (ffit != flipFaces_.end())
     {
         flipFaces_.erase(ffit);
+    }
+
+    // Remove from faceParents list, if necessary
+    labelHashSet::iterator fpsit = faceParents_.find(fIndex);
+
+    if (fpsit != faceParents_.end())
+    {
+        faceParents_.erase(fpsit);
     }
 
     // Decrement the total face-count

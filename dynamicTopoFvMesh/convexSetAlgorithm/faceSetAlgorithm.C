@@ -71,26 +71,16 @@ faceSetAlgorithm::faceSetAlgorithm
         newOwner,
         newNeighbour
     ),
+    candidatePoints_
+    (
+        mesh.faceCentres(),
+        mesh.nFaces() - mesh.nInternalFaces(),
+        mesh.nInternalFaces()
+    ),
     searchTree_
     (
-        mappingTreeData
-        (
-            SubList<point>
-            (
-                mesh.faceCentres(),
-                mesh.nFaces() - mesh.nInternalFaces(),
-                mesh.nInternalFaces()
-            )
-        ),
-        treeBoundBox
-        (
-            SubList<point>
-            (
-                mesh.faceCentres(),
-                mesh.nFaces() - mesh.nInternalFaces(),
-                mesh.nInternalFaces()
-            )
-        ),
+        mappingTreeData(candidatePoints_),
+        treeBoundBox(candidatePoints_),
         8, 10.0, 5.0
     )
 {}
@@ -131,9 +121,34 @@ label faceSetAlgorithm::findMappingCandidate(const point& pt) const
 {
     const scalar nearestDistSqr = GREAT;
 
-    pointIndexHit hit = searchTree_.findNearest(pt, nearestDistSqr);
+    pointIndexHit pHit = searchTree_.findNearest(pt, nearestDistSqr);
 
-    return hit.index();
+    // Since the tree addresses only into boundary faces,
+    // offset the index by the number of internal faces
+    if (pHit.hit())
+    {
+        return (pHit.index() + mesh_.nInternalFaces());
+    }
+
+    return pHit.index();
+}
+
+
+// Write out mapping candidates
+void faceSetAlgorithm::writeMappingCandidates() const
+{
+    // Fetch reference to tree points
+    const UList<point>& points = searchTree_.shapes().points();
+
+    // Write out points to VTK file
+    meshOps::writeVTK
+    (
+        mesh_,
+        "faceMappingCandidates",
+        identity(points.size()),
+        0,
+        points
+    );
 }
 
 
@@ -189,8 +204,8 @@ bool faceSetAlgorithm::computeIntersection
     if (oldFace.size() > 3 || newFace.size() > 3)
     {
         // Decompose new / old faces
-        DynamicList<FixedList<point, 3> > clippingTris(15);
-        DynamicList<FixedList<point, 3> > subjectTris(15);
+        DynamicList<TriPoints> clippingTris(15);
+        DynamicList<TriPoints> subjectTris(15);
 
         label ntOld = 0, ntNew = 0;
 
@@ -326,7 +341,7 @@ bool faceSetAlgorithm::computeIntersection
     else
     {
         // Configure points for clipping triangle
-        FixedList<point, 3> clippingTri(vector::zero);
+        TriPoints clippingTri(vector::zero);
 
         // Fill in points
         clippingTri[0] = newPoints[newFace[0]];
@@ -334,7 +349,7 @@ bool faceSetAlgorithm::computeIntersection
         clippingTri[2] = newPoints[newFace[2]];
 
         // Configure points for subject triangle
-        FixedList<point, 3> subjectTri(vector::zero);
+        TriPoints subjectTri(vector::zero);
 
         // Fill in points
         subjectTri[0] = oldPoints[oldFace[0]];
@@ -364,7 +379,7 @@ bool faceSetAlgorithm::computeIntersection
                     (
                         "triIntersectNew_"
                       + Foam::name(newIndex),
-                        List<FixedList<point, 3> >(1, clippingTri)
+                        List<TriPoints>(1, clippingTri)
                     );
 
                     writeVTK
@@ -373,7 +388,7 @@ bool faceSetAlgorithm::computeIntersection
                       + Foam::name(newIndex)
                       + '_'
                       + Foam::name(oldIndex),
-                        List<FixedList<point, 3> >(1, subjectTri)
+                        List<TriPoints>(1, subjectTri)
                     );
 
                     writeVTK
@@ -406,7 +421,7 @@ bool faceSetAlgorithm::computeIntersection
 void faceSetAlgorithm::writeVTK
 (
     const word& name,
-    const List<FixedList<point, 3> >& triList
+    const List<TriPoints>& triList
 ) const
 {
     // Fill up all points

@@ -57,7 +57,14 @@ class faceSetAlgorithm
     public convexSetAlgorithm
 {
 
+    // Private typedefs
+
+        typedef FixedList<point, 3> TriPoints;
+
     // Private member data
+
+        // Candidate points for tree search
+        SubList<point> candidatePoints_;
 
         //- Tree for candidate search
         indexedOctree<mappingTreeData> searchTree_;
@@ -74,7 +81,7 @@ class faceSetAlgorithm
         void writeVTK
         (
             const word&,
-            const List<FixedList<point, 3> >&
+            const List<TriPoints>&
         ) const;
 
 public:
@@ -110,6 +117,9 @@ public:
 
         // Find the nearest mapping candidate
         virtual label findMappingCandidate(const point& pt) const;
+
+        // Write out mapping candidates
+        virtual void writeMappingCandidates() const;
 
         // Check whether the bounding box contains the entity
         virtual bool contains(const label index) const;
