@@ -1025,15 +1025,9 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
     edges_[commonEdgeIndex[0]] = newEdges[0];
     edges_[commonEdgeIndex[1]] = newEdges[1];
 
-    // Fill-in mapping information
-    labelList mC(2, -1);
-    mC[0] = c0; mC[1] = c1;
-
-    forAll(mC, cellI)
-    {
-        // Set the mapping for this cell
-        setCellMapping(mC[cellI], mC);
-    }
+    // Set the mapping for both cells
+    setCellMapping(c0);
+    setCellMapping(c1);
 
     // Interpolate new fluxes for the flipped face.
     setFaceMapping(fIndex);
@@ -2825,13 +2819,11 @@ const changeMap dynamicTopoFvMesh::swap23
         if (cellI == 2)
         {
             // Skip mapping for the intermediate cell.
-            setCellMapping(newCellIndex[cellI], hullCells, false);
+            continue;
         }
-        else
-        {
-            // Set the mapping for this cell
-            setCellMapping(newCellIndex[cellI], hullCells);
-        }
+
+        // Set the mapping for this cell
+        setCellMapping(newCellIndex[cellI]);
     }
 
     // Fill in mapping information for three new faces.
@@ -3431,7 +3423,7 @@ const changeMap dynamicTopoFvMesh::swap32
         cells_[newCellIndex[cellI]] = newTetCell[cellI];
 
         // Set the mapping for this cell
-        setCellMapping(newCellIndex[cellI], hullCells);
+        setCellMapping(newCellIndex[cellI]);
     }
 
     // Set fill-in mapping for two new boundary faces
@@ -3440,7 +3432,7 @@ const changeMap dynamicTopoFvMesh::swap32
         forAll(newBdyFaceIndex, i)
         {
             // Set the mapping for this face
-            setFaceMapping(newBdyFaceIndex[i], oldBdyFaceIndex);
+            setFaceMapping(newBdyFaceIndex[i]);
         }
     }
 

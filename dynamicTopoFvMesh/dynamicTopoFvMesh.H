@@ -555,19 +555,10 @@ class dynamicTopoFvMesh
         );
 
         // Set fill-in mapping information for a particular cell
-        void setCellMapping
-        (
-            const label cIndex,
-            const labelList& mapCells,
-            bool addEntry = true
-        );
+        void setCellMapping(const label cIndex);
 
         // Set fill-in mapping information for a particular face
-        void setFaceMapping
-        (
-            const label fIndex,
-            const labelList& mapFaces = labelList(0)
-        );
+        void setFaceMapping(const label fIndex);
 
         // Remove the specified cells from the mesh
         const changeMap

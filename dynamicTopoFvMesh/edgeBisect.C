@@ -2225,8 +2225,6 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         mapCells[3] = newCellIndex[1];
     }
 
-    labelList mC(1, c0);
-
     forAll(mapCells, cellI)
     {
         if (mapCells[cellI] == -1)
@@ -2235,20 +2233,11 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         }
 
         // Set the mapping for this cell
-        setCellMapping(mapCells[cellI], mC);
+        setCellMapping(mapCells[cellI]);
     }
 
     // Set fill-in mapping information for the modified face.
-    if (c1 == -1)
-    {
-        // Set the mapping for this face
-        setFaceMapping(fIndex, labelList(1, fIndex));
-    }
-    else
-    {
-        // Internal face. Default mapping.
-        setFaceMapping(fIndex);
-    }
+    setFaceMapping(fIndex);
 
     forAll(newFaceIndex, faceI)
     {
@@ -2257,76 +2246,8 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             continue;
         }
 
-        // Check for boundary faces
-        if (neighbour_[newFaceIndex[faceI]] == -1)
-        {
-            // Boundary face. Compute mapping.
-            labelList mC;
-
-            if (faces_[newFaceIndex[faceI]].size() == 4)
-            {
-                // Quad-face on boundary
-                mC.setSize(1, fIndex);
-            }
-            else
-            if (faces_[newFaceIndex[faceI]].size() == 3)
-            {
-                label triFacePatch = whichPatch(newFaceIndex[faceI]);
-
-                // Fetch face-normals
-                vector tfNorm, f0Norm, f1Norm;
-
-                tfNorm = faces_[newFaceIndex[faceI]].normal(oldPoints_);
-                f0Norm = faces_[c0BdyIndex[0]].normal(oldPoints_);
-                f1Norm = faces_[c0BdyIndex[1]].normal(oldPoints_);
-
-                // Tri-face on boundary. Perform normal checks
-                // also, because of empty patches.
-                if
-                (
-                    (whichPatch(c0BdyIndex[0]) == triFacePatch) &&
-                    ((tfNorm & f0Norm) > 0.0)
-                )
-                {
-                    mC.setSize(1, c0BdyIndex[0]);
-                }
-                else
-                if
-                (
-                    (whichPatch(c0BdyIndex[1]) == triFacePatch) &&
-                    ((tfNorm & f1Norm) > 0.0)
-                )
-                {
-                    mC.setSize(1, c0BdyIndex[1]);
-                }
-                else
-                {
-                    FatalErrorIn
-                    (
-                        "\n"
-                        "const changeMap dynamicTopoFvMesh::bisectQuadFace\n"
-                        "(\n"
-                        "    const label fIndex,\n"
-                        "    const changeMap& masterMap,\n"
-                        "    bool checkOnly\n"
-                        ")\n"
-                    )
-                        << " Unable to find patch for face: "
-                        << newFaceIndex[faceI] << ":: "
-                        << faces_[newFaceIndex[faceI]] << nl
-                        << " Patch: " << triFacePatch << nl
-                        << abort(FatalError);
-                }
-            }
-
-            // Set the mapping for this face
-            setFaceMapping(newFaceIndex[faceI], mC);
-        }
-        else
-        {
-            // Internal quad-faces get default mapping.
-            setFaceMapping(newFaceIndex[faceI]);
-        }
+        // Set the mapping for this face
+        setFaceMapping(newFaceIndex[faceI]);
     }
 
     // Set the flag
@@ -3445,55 +3366,20 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         }
 
         // Set mapping for both new and modified cells.
-        FixedList<label, 2> cmIndex;
-
-        cmIndex[0] = cellHull[indexI];
-        cmIndex[1] = addedCellIndices[indexI];
-
-        // Fill-in candidate mapping information
-        labelList mC(1, cellHull[indexI]);
-
-        forAll(cmIndex, cmI)
-        {
-            // Set the mapping for this cell
-            setCellMapping(cmIndex[cmI], mC);
-        }
+        setCellMapping(cellHull[indexI]);
+        setCellMapping(addedCellIndices[indexI]);
     }
 
     // Set mapping information for old / new faces
     forAll(faceHull, indexI)
     {
-        // Interior faces get default mapping
         if (addedIntFaceIndices[indexI] > -1)
         {
             setFaceMapping(addedIntFaceIndices[indexI]);
         }
 
-        // Decide between default / weighted mapping
-        // based on boundary information
-        if (whichPatch(faceHull[indexI]) == -1)
-        {
-            // Interior faces get default mapping
-            setFaceMapping(faceHull[indexI]);
-            setFaceMapping(addedFaceIndices[indexI]);
-        }
-        else
-        {
-            // Compute mapping weights for boundary faces
-            FixedList<label, 2> fmIndex;
-
-            fmIndex[0] = faceHull[indexI];
-            fmIndex[1] = addedFaceIndices[indexI];
-
-            // Fill-in candidate mapping information
-            labelList mF(1, faceHull[indexI]);
-
-            forAll(fmIndex, fmI)
-            {
-                // Set the mapping for this face
-                setFaceMapping(fmIndex[fmI], mF);
-            }
-        }
+        setFaceMapping(faceHull[indexI]);
+        setFaceMapping(addedFaceIndices[indexI]);
     }
 
     // If modification is coupled, update mapping info.

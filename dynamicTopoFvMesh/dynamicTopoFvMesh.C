@@ -708,12 +708,7 @@ void dynamicTopoFvMesh::removeFace
         if (facesFromPoints_[indexI].index() == fIndex)
         {
             // Remove entry from the list
-            meshOps::removeIndex
-            (
-                indexI,
-                facesFromPoints_
-            );
-
+            meshOps::removeIndex(indexI, facesFromPoints_);
             break;
         }
     }
@@ -723,12 +718,7 @@ void dynamicTopoFvMesh::removeFace
         if (facesFromEdges_[indexI].index() == fIndex)
         {
             // Remove entry from the list
-            meshOps::removeIndex
-            (
-                indexI,
-                facesFromEdges_
-            );
-
+            meshOps::removeIndex(indexI, facesFromEdges_);
             break;
         }
     }
@@ -738,12 +728,7 @@ void dynamicTopoFvMesh::removeFace
         if (facesFromFaces_[indexI].index() == fIndex)
         {
             // Remove entry from the list
-            meshOps::removeIndex
-            (
-                indexI,
-                facesFromFaces_
-            );
-
+            meshOps::removeIndex(indexI, facesFromFaces_);
             break;
         }
     }

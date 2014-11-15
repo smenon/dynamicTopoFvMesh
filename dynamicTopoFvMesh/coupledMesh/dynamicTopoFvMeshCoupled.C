@@ -2295,7 +2295,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             map.addCell(cIter(), mapCells);
 
             // Set basic mapping for this cell
-            setCellMapping(cIter(), mapCells);
+            setCellMapping(cIter());
         }
 
         // Push operation for the slave into coupleMap
@@ -3043,19 +3043,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             // Add this face to the map.
             map.addFace(fI());
 
-            if (nPatch > -1 && getNeighbourProcessor(nPatch) == -1)
-            {
-                // Physical patch on subMesh.
-                //  - Set an invalid number so that
-                //    an entry is made in facesFromFaces,
-                //    while faceParents is empty.
-                setFaceMapping(fI(), labelList(1, -1));
-            }
-            else
-            {
-                // Interior / processor face
-                setFaceMapping(fI());
-            }
+            // Set the mapping for this face
+            setFaceMapping(fI());
 
             // Update cells
             cells_[nOwner][nCellFaces[nOwner]++] = fI();

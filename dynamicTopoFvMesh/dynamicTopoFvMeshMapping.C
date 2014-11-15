@@ -501,6 +501,9 @@ void dynamicTopoFvMesh::threadedMapping
     // Check if single-threaded
     if (nThreads == 1)
     {
+        // Force calculation of demand-driven data on subMeshes
+        initCoupledWeights();
+
         computeMapping
         (
             matchTol,
@@ -609,19 +612,12 @@ void dynamicTopoFvMesh::threadedMapping
 // Set fill-in mapping information for a particular cell
 void dynamicTopoFvMesh::setCellMapping
 (
-    const label cIndex,
-    const labelList& mapCells,
-    bool addEntry
+    const label cIndex
 )
 {
-    if (addEntry)
+    if (debug > 3)
     {
-        if (debug > 3)
-        {
-            Pout<< "Inserting mapping cell: " << cIndex
-                << " mapCells: " << mapCells
-                << endl;
-        }
+        Pout<< "Inserting mapping cell: " << cIndex << endl;
     }
 
     // Update cell-parents information
@@ -632,8 +628,7 @@ void dynamicTopoFvMesh::setCellMapping
 // Set fill-in mapping information for a particular face
 void dynamicTopoFvMesh::setFaceMapping
 (
-    const label fIndex,
-    const labelList& mapFaces
+    const label fIndex
 )
 {
     label patch = whichPatch(fIndex);
@@ -661,51 +656,8 @@ void dynamicTopoFvMesh::setFaceMapping
 
         Pout<< "Inserting mapping face: " << fIndex
             << " patch: " << pName
-            << " mapFaces: " << mapFaces
             << " neiProc: "  << neiProc
             << endl;
-    }
-
-    bool foundError = false;
-
-    // Check to ensure that internal faces are not mapped
-    // from any faces in the mesh
-    if (patch == -1 && mapFaces.size())
-    {
-        foundError = true;
-    }
-
-    // Check to ensure that mapFaces is non-empty for physical patches
-    if (patch > -1 && mapFaces.empty() && neiProc == -1)
-    {
-        foundError = true;
-    }
-
-    if (foundError)
-    {
-        writeVTK("mapFace_" + Foam::name(fIndex), fIndex, 2);
-
-        FatalErrorIn
-        (
-            "\n"
-            "void dynamicTopoFvMesh::setFaceMapping\n"
-            "(\n"
-            "    const label fIndex,\n"
-            "    const labelList& mapFaces\n"
-            ")"
-        )
-            << nl << " Incompatible mapping. " << nl
-            << "  Possible reasons: " << nl
-            << "    1. No mapping specified for a boundary face; " << nl
-            << "    2. Mapping specified for an internal face, " << nl
-            << "       when none was expected." << nl << nl
-            << " Face: " << fIndex << nl
-            << " Patch: "
-            << (patch > -1 ? boundaryMesh()[patch].name() : "Internal") << nl
-            << " Owner: " << owner_[fIndex] << nl
-            << " Neighbour: " << neighbour_[fIndex] << nl
-            << " mapFaces: " << mapFaces << nl
-            << abort(FatalError);
     }
 
     // For internal / processor faces, bail out
