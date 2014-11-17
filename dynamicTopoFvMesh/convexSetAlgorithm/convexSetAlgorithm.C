@@ -86,6 +86,7 @@ void convexSetAlgorithm::computeWeights
 (
     const label index,
     const label offset,
+    const labelList& mapCandidates,
     const labelListList& neighbourList,
     labelList& parents,
     scalarField& weights,
@@ -102,6 +103,7 @@ void convexSetAlgorithm::computeWeights
             "(\n"
             "    const label index,\n"
             "    const label offset,\n"
+            "    const labelList& mapCandidates,\n"
             "    const labelListList& neighbourList,\n"
             "    labelList& parents,\n"
             "    scalarField& weights,\n"
@@ -112,6 +114,7 @@ void convexSetAlgorithm::computeWeights
             << " Addressing has already been calculated." << nl
             << " Index: " << index << nl
             << " Offset: " << offset << nl
+            << " mapCandidates: " << mapCandidates << nl
             << " Type: " << (dimension() == 2 ? "Face" : "Cell") << nl
             << " Parents: " << parents << nl
             << " Weights: " << weights << nl
@@ -120,7 +123,7 @@ void convexSetAlgorithm::computeWeights
     }
 
     // Do nothing for empty lists
-    if (neighbourList.empty())
+    if (mapCandidates.empty() || neighbourList.empty())
     {
         return;
     }
@@ -128,11 +131,7 @@ void convexSetAlgorithm::computeWeights
     bool changed;
     label nAttempts = 0, nIntersects = 0;
 
-    // Calculate the algorithm normFactor
-    computeNormFactor(index);
-
-    // Find the nearest candidate for mapping
-    label mapCandidate = findMappingCandidate(refCentre_);
+    const label neighbourListSize = (neighbourList.size() + offset);
 
     // Maintain a check-list
     labelHashSet checked, skipped;
@@ -148,19 +147,7 @@ void convexSetAlgorithm::computeWeights
 
         if (nAttempts == 0)
         {
-            // If an appropriate mapping candidate is not available,
-            // prevent accidental addressing out of bounds
-            // and revert to the rescue mechanism
-            const label neighbourListSize = (neighbourList.size() + offset);
-
-            if (mapCandidate < offset || mapCandidate >= neighbourListSize)
-            {
-                mapCandidate = offset;
-            }
-            else
-            {
-                checkList = labelList(1, mapCandidate);
-            }
+            checkList = mapCandidates;
         }
         else
         {
@@ -173,7 +160,17 @@ void convexSetAlgorithm::computeWeights
 
             if (nAttempts == 0)
             {
-                checkEntities = labelList(1, checkList[indexI] - offset);
+                const label mapCandidate = checkList[indexI];
+
+                // Prevent accidental addressing out of bounds
+                if (mapCandidate < offset || mapCandidate >= neighbourListSize)
+                {
+                    continue;
+                }
+                else
+                {
+                    checkEntities = labelList(1, mapCandidate - offset);
+                }
             }
             else
             {
@@ -233,7 +230,21 @@ void convexSetAlgorithm::computeWeights
             // Need to setup a rescue mechanism.
             labelHashSet rescue;
 
-            rescue.insert(mapCandidate - offset);
+            forAll(mapCandidates, cI)
+            {
+                const label mapCandidate = checkList[cI];
+
+                // Prevent accidental addressing out of bounds
+                if (mapCandidate < offset || mapCandidate >= neighbourListSize)
+                {
+                    continue;
+                }
+
+                if (!rescue.found(mapCandidate - offset))
+                {
+                    rescue.insert(mapCandidate - offset);
+                }
+            }
 
             for (label level = 0; level < 10; level++)
             {

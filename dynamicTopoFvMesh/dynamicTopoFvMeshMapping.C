@@ -68,6 +68,7 @@ void dynamicTopoFvMesh::computeMapping
     const convexSetAlgorithm& cellAlgorithm
 )
 {
+    labelList mapCandidates;
     label nInconsistencies = 0;
     scalar maxFaceError = 0.0, maxCellError = 0.0;
     DynamicList<scalar> cellErrors(10), faceErrors(10);
@@ -88,11 +89,18 @@ void dynamicTopoFvMesh::computeMapping
         }
         else
         {
+            // Calculate the algorithm normFactor
+            cellAlgorithm.computeNormFactor(cIndex);
+
+            // Find the nearest candidates for mapping
+            cellAlgorithm.findMappingCandidates(mapCandidates);
+
             // Obtain weighting factors for this cell.
             cellAlgorithm.computeWeights
             (
                 cIndex,
                 0,
+                mapCandidates,
                 polyMesh::cellCells(),
                 masterObjects,
                 cellWeights_[cellI],
@@ -192,11 +200,18 @@ void dynamicTopoFvMesh::computeMapping
         }
         else
         {
+            // Calculate the algorithm normFactor
+            faceAlgorithm.computeNormFactor(fIndex);
+
+            // Find the nearest candidates for mapping
+            faceAlgorithm.findMappingCandidates(mapCandidates);
+
             // Obtain weighting factors for this face.
             faceAlgorithm.computeWeights
             (
                 fIndex,
                 boundaryMesh()[patchIndex].start(),
+                mapCandidates,
                 boundaryMesh()[patchIndex].faceFaces(),
                 masterObjects,
                 faceWeights_[faceI],
@@ -304,10 +319,15 @@ void dynamicTopoFvMesh::computeMapping
                     {
                         label cIndex = failedCells[cellI].index();
 
+                        cellAlgorithm.computeNormFactor(cIndex);
+
+                        cellAlgorithm.findMappingCandidates(mapCandidates);
+
                         cellAlgorithm.computeWeights
                         (
                             cIndex,
                             0,
+                            mapCandidates,
                             polyMesh::cellCells(),
                             objects,
                             weights,
@@ -341,10 +361,15 @@ void dynamicTopoFvMesh::computeMapping
 
                         const polyBoundaryMesh& boundary = boundaryMesh();
 
+                        faceAlgorithm.computeNormFactor(fIndex);
+
+                        faceAlgorithm.findMappingCandidates(mapCandidates);
+
                         faceAlgorithm.computeWeights
                         (
                             fIndex,
                             boundary[patchIndex].start(),
+                            mapCandidates,
                             boundary[patchIndex].faceFaces(),
                             objects,
                             weights,

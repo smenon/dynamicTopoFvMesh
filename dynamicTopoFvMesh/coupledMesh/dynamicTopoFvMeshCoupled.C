@@ -9931,43 +9931,27 @@ void dynamicTopoFvMesh::computeCoupledWeights
             // Fetch reference to subMesh
             const coupledMesh& recvMesh = recvMeshes_[pI];
             const dynamicTopoFvMesh& mesh = recvMesh.subMesh();
+            const polyBoundaryMesh& boundary = mesh.boundaryMesh();
             const faceSetAlgorithm& faceAlgorithm = recvMesh.faceAlgorithm();
 
             // Prepare lists
+            labelList mapCandidates;
             labelList coupleObjects;
             scalarField coupleWeights;
             vectorField coupleCentres;
 
-            // Initialize the bounding box
+            // Calculate the algorithm normFactor
             faceAlgorithm.computeNormFactor(index);
 
-            // Loop through all subMesh faces, and check for bounds
-            const polyBoundaryMesh& boundary = mesh.boundaryMesh();
-
-            label pSize = boundary[patchIndex].size();
-            label pStart = boundary[patchIndex].start();
-
-            bool notContained = true;
-
-            for (label faceI = pStart; faceI < (pStart + pSize); faceI++)
-            {
-                if (faceAlgorithm.contains(faceI))
-                {
-                    notContained = false;
-                    break;
-                }
-            }
-
-            if (notContained)
-            {
-                continue;
-            }
+            // Find the nearest candidates for mapping
+            faceAlgorithm.findMappingCandidates(mapCandidates);
 
             // Obtain weighting factors for this face.
             faceAlgorithm.computeWeights
             (
                 index,
-                pStart,
+                boundary[patchIndex].start(),
+                mapCandidates,
                 boundary[patchIndex].faceFaces(),
                 coupleObjects,
                 coupleWeights,
@@ -10012,37 +9996,23 @@ void dynamicTopoFvMesh::computeCoupledWeights
             const cellSetAlgorithm& cellAlgorithm = recvMesh.cellAlgorithm();
 
             // Prepare lists
+            labelList mapCandidates;
             labelList coupleObjects;
             scalarField coupleWeights;
             vectorField coupleCentres;
 
-            // Initialize the bounding box
+            // Calculate the algorithm normFactor
             cellAlgorithm.computeNormFactor(index);
 
-            // Loop through all subMesh cells, and check for bounds
-            const cellList& meshCells = mesh.cells();
-
-            bool notContained = true;
-
-            forAll(meshCells, cellI)
-            {
-                if (cellAlgorithm.contains(cellI))
-                {
-                    notContained = false;
-                    break;
-                }
-            }
-
-            if (notContained)
-            {
-                continue;
-            }
+            // Find the nearest candidates for mapping
+            cellAlgorithm.findMappingCandidates(mapCandidates);
 
             // Obtain weighting factors for this cell.
             cellAlgorithm.computeWeights
             (
                 index,
                 0,
+                mapCandidates,
                 mesh.polyMesh::cellCells(),
                 coupleObjects,
                 coupleWeights,

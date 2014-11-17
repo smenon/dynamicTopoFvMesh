@@ -41,7 +41,7 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-               Class convexSetAlgorithm::mappingData Declaration
+             Class convexSetAlgorithm::mappingTreeData Declaration
 \*---------------------------------------------------------------------------*/
 
 class convexSetAlgorithm::mappingTreeData
@@ -87,11 +87,26 @@ public:
         // overlaps the bounding box
         inline bool overlaps
         (
-            const label index,
+            const label& index,
             const treeBoundBox& sampleBox
         ) const
         {
             return sampleBox.contains(points_[index]);
+        }
+
+        // Returns whether the shape at index
+        // overlaps the sphere
+        inline bool overlaps
+        (
+            const label& index,
+            const point& centre,
+            const scalar& radiusSqr
+        ) const
+        {
+            const point& p = points_[index];
+            const scalar distSqr = magSqr(p - centre);
+
+            return (distSqr <= radiusSqr);
         }
 
         // Return const reference to points
@@ -103,7 +118,7 @@ public:
 
 
 /*---------------------------------------------------------------------------*\
-        Class convexSetAlgorithm::mappingData::findNearestOp Declaration
+      Class convexSetAlgorithm::mappingTreeData::findNearestOp Declaration
 \*---------------------------------------------------------------------------*/
 
 class convexSetAlgorithm::mappingTreeData::findNearestOp

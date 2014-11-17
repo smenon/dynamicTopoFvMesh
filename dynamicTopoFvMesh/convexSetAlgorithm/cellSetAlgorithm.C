@@ -114,14 +114,18 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
 }
 
 
-// Find the nearest mapping candidate
-label cellSetAlgorithm::findMappingCandidate(const point& pt) const
+// Find the nearest mapping candidates
+void cellSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
 {
-    const scalar nearestDistSqr = GREAT;
+    // Clear the input list
+    mapCandidates.clear();
 
-    pointIndexHit hit = searchTree_.findNearest(pt, nearestDistSqr);
+    // Use the bounding box span as a search radius
+    const vector span = box_.span();
+    const scalar sqrDist = magSqr(span);
 
-    return hit.index();
+    // Find all candidates within search radius
+    mapCandidates = searchTree_.findSphere(refCentre_, sqrDist);
 }
 
 

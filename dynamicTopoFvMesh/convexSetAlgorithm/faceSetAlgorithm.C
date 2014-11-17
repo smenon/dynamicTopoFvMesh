@@ -116,21 +116,25 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
 }
 
 
-// Find the nearest mapping candidate
-label faceSetAlgorithm::findMappingCandidate(const point& pt) const
+// Find the nearest mapping candidates
+void faceSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
 {
-    const scalar nearestDistSqr = GREAT;
+    // Clear the input list
+    mapCandidates.clear();
 
-    pointIndexHit pHit = searchTree_.findNearest(pt, nearestDistSqr);
+    // Use the bounding box span as a search radius
+    const vector span = box_.span();
+    const scalar sqrDist = magSqr(span);
+
+    // Find all candidates within search radius
+    mapCandidates = searchTree_.findSphere(refCentre_, sqrDist);
 
     // Since the tree addresses only into boundary faces,
     // offset the index by the number of internal faces
-    if (pHit.hit())
+    forAll(mapCandidates, cI)
     {
-        return (pHit.index() + mesh_.nInternalFaces());
+        mapCandidates[cI] += mesh_.nInternalFaces();
     }
-
-    return pHit.index();
 }
 
 

@@ -112,8 +112,8 @@ public:
         // Compute normFactor
         virtual void computeNormFactor(const label index) const;
 
-        // Find the nearest mapping candidate
-        virtual label findMappingCandidate(const point& pt) const;
+        // Find the nearest mapping candidates
+        virtual void findMappingCandidates(labelList& mapCandidates) const;
 
         // Write out mapping candidates
         virtual void writeMappingCandidates() const;
