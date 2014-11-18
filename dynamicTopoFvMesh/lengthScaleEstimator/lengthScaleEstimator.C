@@ -692,6 +692,11 @@ void lengthScaleEstimator::readRefinementOptions
             << abort(FatalError);
     }
 
+    if (refineDict.found("averageMeshScale") || mandatory)
+    {
+        avgMeshScale_ = readBool(refineDict.lookup("averageMeshScale"));
+    }
+
     if (reRead)
     {
         // Check if values have changed, and report it.
@@ -959,6 +964,105 @@ void lengthScaleEstimator::setCoupledPatches
 }
 
 
+//- Calculate the average mesh length scale field
+void lengthScaleEstimator::calculateAvgLengthScale
+(
+    UList<scalar>& lengthScale
+)
+{
+    vector dir;
+    labelList nCellEdges(lengthScale.size());
+
+    // Initialize length scale field
+    forAll(lengthScale, cellI)
+    {
+        nCellEdges[cellI] = 0;
+        lengthScale[cellI] = 0.0;
+    }
+
+    const faceList& faces = mesh_.faces();
+    const pointField& points = mesh_.points();
+
+    const labelList& own = mesh_.faceOwner();
+    const labelList& nei = mesh_.faceNeighbour();
+
+    // Define a direction vector to filter out
+    // non-geometric directions
+    const Vector<label>& geomDir = mesh_.geometricD();
+
+    forAll(geomDir, compI)
+    {
+        if (geomDir[compI] == 1)
+        {
+            dir[compI] = 1.0;
+        }
+        else
+        {
+            dir[compI] = 0.0;
+        }
+    }
+
+    forAll(own, faceI)
+    {
+        const label fC = own[faceI];
+        const face& f = faces[faceI];
+        const label nfPoints = f.size();
+
+        for (label pI = nfPoints - 1, pJ = 0; pJ < nfPoints; pI = pJ++)
+        {
+            const point& ppI = points[f[pI]];
+            const point& ppJ = points[f[pJ]];
+
+            const vector lengthVec = linePointRef(ppI, ppJ).vec();
+
+            if (mag(lengthVec & dir) < SMALL)
+            {
+                continue;
+            }
+
+            const scalar lengthSqr = Foam::magSqr(lengthVec);
+
+            lengthScale[fC] += lengthSqr;
+            nCellEdges[fC]++;
+        }
+    }
+
+    forAll(nei, faceI)
+    {
+        const label fC = nei[faceI];
+        const face& f = faces[faceI];
+        const label nfPoints = f.size();
+
+        for (label pI = nfPoints - 1, pJ = 0; pJ < nfPoints; pI = pJ++)
+        {
+            const point& ppI = points[f[pI]];
+            const point& ppJ = points[f[pJ]];
+
+            const vector lengthVec = linePointRef(ppI, ppJ).vec();
+
+            if (mag(lengthVec & dir) < SMALL)
+            {
+                continue;
+            }
+
+            const scalar lengthSqr = Foam::magSqr(lengthVec);
+
+            lengthScale[fC] += lengthSqr;
+            nCellEdges[fC]++;
+        }
+    }
+
+    // Finalize length scale field
+    forAll(lengthScale, cellI)
+    {
+        const scalar sqrScale = lengthScale[cellI];
+        const scalar nEdges = scalar(nCellEdges[cellI]);
+
+        lengthScale[cellI] = sqrt(sqrScale / nEdges);
+    }
+}
+
+
 // Calculate the length scale field
 void lengthScaleEstimator::calculateLengthScale
 (
@@ -980,6 +1084,13 @@ void lengthScaleEstimator::calculateLengthScale
             << " Field size: " << lengthScale.size()
             << " nCells: " << mesh_.nCells()
             << abort(FatalError);
+    }
+
+    // Check for average length scale method
+    if (avgMeshScale_)
+    {
+        calculateAvgLengthScale(lengthScale);
+        return;
     }
 
     // HashSet to keep track of cells in each level

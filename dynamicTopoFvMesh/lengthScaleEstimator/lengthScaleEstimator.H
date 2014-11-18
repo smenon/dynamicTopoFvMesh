@@ -72,6 +72,9 @@ class lengthScaleEstimator
         scalar maxLengthScale_;
         scalar curvatureDeviation_;
 
+        //- Switch to enable average mesh scale method
+        bool avgMeshScale_;
+
         //- Specific to proximity-based refinement
         label spatialRes_;
         boundBox proxBoundBox_;
@@ -206,6 +209,9 @@ public:
         (
             const dictionary& coupledPatches
         );
+
+        //- Calculate the average mesh length scale field
+        void calculateAvgLengthScale(UList<scalar>& lengthScale);
 
         //- Calculate the length scale field
         void calculateLengthScale(UList<scalar>& lengthScale);
