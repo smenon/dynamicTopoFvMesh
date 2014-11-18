@@ -69,6 +69,7 @@ lengthScaleEstimator::lengthScaleEstimator
     minLengthScale_(VSMALL),
     maxLengthScale_(GREAT),
     curvatureDeviation_(0.0),
+    avgMeshScale_(false),
     spatialRes_(-1),
     proximityBins_(0),
     sliceThreshold_(VSMALL),
