@@ -1286,14 +1286,14 @@ void mesquiteMotionSolver::initArrays()
 
     if (twoDMesh_)
     {
+        // Initialise parallel connectivity, if necessary
+        initParallelConnectivity();
+
         // Optionally fix additional zone points
         initFixedZones();
 
         // Optionally fix additional boundary layer zone points
         initBoundaryLayerZones();
-
-        // Initialise parallel connectivity, if necessary
-        initParallelConnectivity();
 
         // Set the flag
         arraysInitialized_ = true;
