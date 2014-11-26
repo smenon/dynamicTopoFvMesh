@@ -270,9 +270,21 @@ inline bool dynamicTopoFvMesh::getEntityLengthScale
     else
     {
         // If this entity was deleted, skip it.
-        if (edgeFaces_[index].empty())
+        const labelList& eFaces = edgeFaces_[index];
+
+        if (eFaces.empty())
         {
             return false;
+        }
+        else
+        {
+            forAll(eFaces, faceI)
+            {
+                if (faces_[eFaces[faceI]].size() != 3)
+                {
+                    return false;
+                }
+            }
         }
 
         // Fetch the edge

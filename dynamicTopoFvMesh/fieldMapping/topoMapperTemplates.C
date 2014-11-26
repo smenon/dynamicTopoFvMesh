@@ -63,6 +63,7 @@ void topoMapper::storeGradients
 ) const
 {
     // Define a few typedefs for convenience
+    typedef typename outerProduct<vector, Type>::type GradType;
     typedef GeometricField<Type, fvPatchField, volMesh> volType;
     typedef const GeometricField<Type, fvPatchField, volMesh> constVolType;
 
@@ -110,6 +111,33 @@ void topoMapper::storeGradients
         word registerName("remapGradient(" + field.name() + ')');
 
         // Make a new entry
+        if (disableGradients_)
+        {
+            gradList.set
+            (
+                fieldIndex,
+                new gradType
+                (
+                    IOobject
+                    (
+                        registerName,
+                        mesh_.time().timeName(),
+                        mesh_,
+                        IOobject::NO_READ,
+                        IOobject::NO_WRITE,
+                        true
+                    ),
+                    mesh_,
+                    dimensioned<GradType>
+                    (
+                        "0",
+                        field.dimensions() / dimLength,
+                        pTraits<GradType>::zero
+                    )
+                )
+            );
+        }
+        else
         if (mesh_.schemesDict().subDict("gradSchemes").found(gradName))
         {
             gradList.set

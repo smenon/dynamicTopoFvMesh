@@ -2035,7 +2035,27 @@ void dynamicTopoFvMesh::loadFieldMapper()
     }
     else
     {
-        mapper_.set(new topoMapper(*this, dict_));
+        // Check whether gradients are disabled
+        bool disableGradients = false;
+
+        const dictionary& meshDict = dict_.subDict("dynamicTopoFvMesh");
+
+        if (meshDict.found("disableGradients"))
+        {
+            disableGradients = readBool(meshDict.lookup("disableGradients"));
+
+            // Display a message to warn the user
+            if (disableGradients)
+            {
+                Info<< " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << nl
+                    << " Remapping gradients are disabled.           " << nl
+                    << " Field remapping will default to first-order " << nl
+                    << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << nl
+                    << endl;
+            }
+        }
+
+        mapper_.set(new topoMapper(*this, dict_, disableGradients));
     }
 }
 
@@ -3725,7 +3745,7 @@ scalar dynamicTopoFvMesh::edgeLengthScale
             scale += lengthScale_[neighbour_[eFaces[faceI]]];
         }
 
-        scale /= (2.0*eFaces.size());
+        scale /= (2.0 * eFaces.size());
     }
     else
     {

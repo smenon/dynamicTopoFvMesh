@@ -87,21 +87,14 @@ void topoCellMapper::mapInternalField
 
         forAll(addr, cellJ)
         {
+            const gradType& gJ = gF[addr[cellJ]];
+            const Type& fJ = fieldCpy[addr[cellJ]];
+
+            const scalar& wIJ = wC[cellI][cellJ];
+            const vector& dIJ = (xC[cellI][cellJ] - centres[addr[cellJ]]);
+
             // Accumulate volume-weighted Taylor-series interpolate
-            iF[cellI] +=
-            (
-                wC[cellI][cellJ] *
-                (
-                    fieldCpy[addr[cellJ]]
-                  + (
-                        gF[addr[cellJ]] &
-                        (
-                            xC[cellI][cellJ]
-                          - centres[addr[cellJ]]
-                        )
-                    )
-                )
-            );
+            iF[cellI] += wIJ * (fJ + (dIJ & gJ));
         }
     }
 }

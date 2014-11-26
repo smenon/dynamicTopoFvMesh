@@ -103,6 +103,9 @@ class topoMapper
         mutable scalarField* cellVolumesPtr_;
         mutable volVectorField* cellCentresPtr_;
 
+        //- Switch to optionally disable gradients
+        mutable bool disableGradients_;
+
         //- Intersection weights
         mutable List<scalarField> faceWeights_;
         mutable List<scalarField> cellWeights_;
@@ -151,7 +154,12 @@ public:
     // Constructors
 
         //- Construct from mesh and dictionary
-        topoMapper(const fvMesh& mesh, const dictionary& dict);
+        topoMapper
+        (
+            const fvMesh& mesh,
+            const dictionary& dict,
+            const bool disableGradients
+        );
 
     // Destructor
 

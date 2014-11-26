@@ -185,7 +185,8 @@ void topoMapper::storeGeometry() const
 topoMapper::topoMapper
 (
     const fvMesh& mesh,
-    const dictionary& dict
+    const dictionary& dict,
+    const bool disableGradients
 )
 :
     mesh_(mesh),
@@ -195,7 +196,8 @@ topoMapper::topoMapper
     boundaryMap_(NULL),
     fluxCorrector_(fluxCorrector::New(mesh, dict)),
     cellVolumesPtr_(NULL),
-    cellCentresPtr_(NULL)
+    cellCentresPtr_(NULL),
+    disableGradients_(disableGradients)
 {}
 
 
