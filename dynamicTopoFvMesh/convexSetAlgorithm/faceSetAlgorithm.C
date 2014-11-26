@@ -107,6 +107,22 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
     // Compute a bounding box around the face
     box_ = treeBoundBox(newFaces_[index].points(newPoints_));
 
+    // Axis-aligned faces can result in degenerate bounding boxes.
+    // If so, artificially inflate in the degenerate dimension
+    const scalar cutOff = 0.001;
+    const vector boxSpan = box_.span();
+    const scalar magSpan = magSqr(boxSpan);
+    const scalar magCutOff = (cutOff * magSpan);
+
+    for (label cmpt = 0; cmpt < pTraits<vector>::nComponents; cmpt++)
+    {
+        if (boxSpan[cmpt] < magCutOff)
+        {
+            box_.min()[cmpt] -= magCutOff;
+            box_.max()[cmpt] += magCutOff;
+        }
+    }
+
     vector minToXb = (box_.min() - box_.midpoint());
     vector maxToXb = (box_.max() - box_.midpoint());
 

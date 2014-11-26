@@ -71,7 +71,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     if
     (
-        (status(TOTAL_MODIFICATIONS) > maxModifications_) &&
+        (status(TOTAL_MODIFICATIONS) >= maxModifications_) &&
         (maxModifications_ > -1)
     )
     {
@@ -112,17 +112,17 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     label replaceFace = -1, retainFace = -1;
     face tmpQuadFace(4), tmpTriFace(3);
     labelList tmpQFEdges(4, -1), tmpTFEdges(3, -1);
-    FixedList<label,7> newFaceIndex(-1), newEdgeIndex(-1);
-    FixedList<edge,4> commonEdges(edge(-1, -1));
-    FixedList<label,4> cornerEdgeIndex(-1), commonEdgeIndex(-1);
-    FixedList<label,4> commonFaceIndex(-1);
-    FixedList<label,2> newPointIndex(-1), newCellIndex(-1);
-    FixedList<label,4> otherEdgeIndex(-1), otherEdgePoint(-1);
-    FixedList<label,4> otherPointIndex(-1), nextToOtherPoint(-1);
-    FixedList<label,2> c0BdyIndex(-1), c0IntIndex(-1);
-    FixedList<label,2> c1BdyIndex(-1), c1IntIndex(-1);
-    FixedList<face,2> c0BdyFace(face(3)), c0IntFace(face(4));
-    FixedList<face,2> c1BdyFace(face(3)), c1IntFace(face(4));
+    FixedList<label, 7> newFaceIndex(-1), newEdgeIndex(-1);
+    FixedList<edge, 4> commonEdges(edge(-1, -1));
+    FixedList<label, 4> cornerEdgeIndex(-1), commonEdgeIndex(-1);
+    FixedList<label, 4> commonFaceIndex(-1);
+    FixedList<label, 2> newPointIndex(-1), newCellIndex(-1);
+    FixedList<label, 4> otherEdgeIndex(-1), otherEdgePoint(-1);
+    FixedList<label, 4> otherPointIndex(-1), nextToOtherPoint(-1);
+    FixedList<label, 2> c0BdyIndex(-1), c0IntIndex(-1);
+    FixedList<label, 2> c1BdyIndex(-1), c1IntIndex(-1);
+    FixedList<face, 2> c0BdyFace(face(3)), c0IntFace(face(4));
+    FixedList<face, 2> c1BdyFace(face(3)), c1IntFace(face(4));
 
     // Get the two cells on either side...
     label c0 = owner_[fIndex], c1 = neighbour_[fIndex];
@@ -2315,7 +2315,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     if
     (
-        (status(TOTAL_MODIFICATIONS) > maxModifications_) &&
+        (status(TOTAL_MODIFICATIONS) >= maxModifications_) &&
         (maxModifications_ > -1)
     )
     {

@@ -71,7 +71,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
     if
     (
-        (status(TOTAL_MODIFICATIONS) > maxModifications_)
+        (status(TOTAL_MODIFICATIONS) >= maxModifications_)
      && (maxModifications_ > -1)
     )
     {
@@ -3966,7 +3966,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
 
     if
     (
-        (status(TOTAL_MODIFICATIONS) > maxModifications_)
+        (status(TOTAL_MODIFICATIONS) >= maxModifications_)
      && (maxModifications_ > -1)
     )
     {
