@@ -103,7 +103,7 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
     );
 
     // Compute a bounding box around the cell
-    box_ = boundBox(newCells_[index].points(newFaces_, newPoints_), false);
+    box_ = treeBoundBox(newCells_[index].points(newFaces_, newPoints_));
 
     vector minToXb = (box_.min() - box_.midpoint());
     vector maxToXb = (box_.max() - box_.midpoint());
@@ -120,12 +120,8 @@ void cellSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
     // Clear the input list
     mapCandidates.clear();
 
-    // Use the bounding box span as a search radius
-    const vector span = box_.span();
-    const scalar sqrDist = magSqr(span);
-
-    // Find all candidates within search radius
-    mapCandidates = searchTree_.findSphere(refCentre_, sqrDist);
+    // Find all candidates within search box
+    mapCandidates = searchTree_.findBox(box_);
 }
 
 

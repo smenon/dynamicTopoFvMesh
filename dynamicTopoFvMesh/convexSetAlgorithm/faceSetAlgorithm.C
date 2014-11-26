@@ -105,7 +105,7 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
     refNorm_ /= normFactor_ + VSMALL;
 
     // Compute a bounding box around the face
-    box_ = boundBox(newFaces_[index].points(newPoints_), false);
+    box_ = treeBoundBox(newFaces_[index].points(newPoints_));
 
     vector minToXb = (box_.min() - box_.midpoint());
     vector maxToXb = (box_.max() - box_.midpoint());
@@ -122,12 +122,8 @@ void faceSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
     // Clear the input list
     mapCandidates.clear();
 
-    // Use the bounding box span as a search radius
-    const vector span = box_.span();
-    const scalar sqrDist = magSqr(span);
-
-    // Find all candidates within search radius
-    mapCandidates = searchTree_.findSphere(refCentre_, sqrDist);
+    // Find all candidates within search box
+    mapCandidates = searchTree_.findBox(box_);
 
     // Since the tree addresses only into boundary faces,
     // offset the index by the number of internal faces

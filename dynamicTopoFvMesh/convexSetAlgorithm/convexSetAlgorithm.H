@@ -47,7 +47,6 @@ SourceFiles
 #include "edgeList.H"
 #include "faceList.H"
 #include "cellList.H"
-#include "boundBox.H"
 #include "objectMap.H"
 #include "vectorField.H"
 #include "indexedOctree.H"
@@ -94,9 +93,9 @@ protected:
         mutable labelList parents_;
 
         //- Internal data members
-        mutable boundBox box_;
         mutable vector refNorm_;
         mutable vector refCentre_;
+        mutable treeBoundBox box_;
         mutable scalar normFactor_;
         mutable vectorField centres_;
         mutable scalarField weights_;
