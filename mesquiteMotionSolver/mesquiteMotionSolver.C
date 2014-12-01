@@ -1716,14 +1716,14 @@ void mesquiteMotionSolver::initArrays()
         fixFlags_[pIndex] = 1;
     }
 
+    // Initialise parallel connectivity, if necessary
+    initParallelConnectivity();
+
     // Optionally fix additional zone points
     initFixedZones();
 
     // Optionally fix additional boundary layer zone points
     initBoundaryLayerZones();
-
-    // Initialise parallel connectivity, if necessary
-    initParallelConnectivity();
 
     // Set the flag
     arraysInitialized_ = true;
@@ -2907,7 +2907,7 @@ void mesquiteMotionSolver::initBoundaryLayerZones()
 
             const pointZone& pLabels = pZones[zoneID];
 
-            if (twoDMesh_)
+            if (surfaceSmoothing_)
             {
                 forAll(pIDs_, patchI)
                 {
@@ -2932,12 +2932,15 @@ void mesquiteMotionSolver::initBoundaryLayerZones()
                     }
                 }
             }
-            else
+
+            if (twoDMesh_)
             {
-                forAll(pLabels, pointI)
-                {
-                    fixFlags_[pLabels[pointI]] = 1;
-                }
+                continue;
+            }
+
+            forAll(pLabels, pointI)
+            {
+                fixFlags_[pLabels[pointI]] = 1;
             }
         }
     }
@@ -2962,7 +2965,7 @@ void mesquiteMotionSolver::initFixedZones()
 
     forAll(fixZones, zoneI)
     {
-        label zoneID = mesh().pointZones().findZoneID(fixZones[zoneI]);
+        label zoneID = pZones.findZoneID(fixZones[zoneI]);
 
         if (zoneID == -1)
         {
@@ -2971,7 +2974,7 @@ void mesquiteMotionSolver::initFixedZones()
 
         const pointZone& pLabels = pZones[zoneID];
 
-        if (twoDMesh_)
+        if (surfaceSmoothing_)
         {
             forAll(pIDs_, patchI)
             {
@@ -2996,12 +2999,15 @@ void mesquiteMotionSolver::initFixedZones()
                 }
             }
         }
-        else
+
+        if (twoDMesh_)
         {
-            forAll(pLabels, pointI)
-            {
-                fixFlags_[pLabels[pointI]] = 1;
-            }
+            continue;
+        }
+
+        forAll(pLabels, pointI)
+        {
+            fixFlags_[pLabels[pointI]] = 1;
         }
     }
 }
