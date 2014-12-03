@@ -409,14 +409,14 @@ void dynamicTopoFvMesh::removeCell
     {
         // Store this information for the reOrdering stage
         deletedCells_.insert(cIndex);
-    }
 
-    // Check if this cell was added to a zone
-    Map<label>::iterator it = addedCellZones_.find(cIndex);
+        // Check if this cell was added to a zone
+        Map<label>::iterator it = addedCellZones_.find(cIndex);
 
-    if (it != addedCellZones_.end())
-    {
-        addedCellZones_.erase(it);
+        if (it != addedCellZones_.end())
+        {
+            addedCellZones_.erase(it);
+        }
     }
 
     // Check if the cell was added in the current morph, and delete
@@ -684,22 +684,22 @@ void dynamicTopoFvMesh::removeFace
     {
         // Store this information for the reOrdering stage
         deletedFaces_.insert(fIndex);
-    }
 
-    // Check and remove from the list of added face patches
-    Map<label>::iterator fpit = addedFacePatches_.find(fIndex);
+        // Check and remove from the list of added face patches
+        Map<label>::iterator fpit = addedFacePatches_.find(fIndex);
 
-    if (fpit != addedFacePatches_.end())
-    {
-        addedFacePatches_.erase(fpit);
-    }
+        if (fpit != addedFacePatches_.end())
+        {
+            addedFacePatches_.erase(fpit);
+        }
 
-    // Check if this face was added to a zone
-    Map<label>::iterator fzit = addedFaceZones_.find(fIndex);
+        // Check if this face was added to a zone
+        Map<label>::iterator fzit = addedFaceZones_.find(fIndex);
 
-    if (fzit != addedFaceZones_.end())
-    {
-        addedFaceZones_.erase(fzit);
+        if (fzit != addedFaceZones_.end())
+        {
+            addedFaceZones_.erase(fzit);
+        }
     }
 
     // Check if the face was added in the current morph, and delete
@@ -932,14 +932,14 @@ void dynamicTopoFvMesh::removeEdge
     {
         // Store this information for the reOrdering stage
         deletedEdges_.insert(eIndex);
-    }
 
-    // Check and remove from the list of added edge patches
-    Map<label>::iterator it = addedEdgePatches_.find(eIndex);
+        // Check and remove from the list of added edge patches
+        Map<label>::iterator it = addedEdgePatches_.find(eIndex);
 
-    if (it != addedEdgePatches_.end())
-    {
-        addedEdgePatches_.erase(it);
+        if (it != addedEdgePatches_.end())
+        {
+            addedEdgePatches_.erase(it);
+        }
     }
 
     // Decrement the total edge-count
@@ -1031,15 +1031,16 @@ void dynamicTopoFvMesh::removePoint
     }
     else
     {
+        // Store this information for the reOrdering stage
         deletedPoints_.insert(pIndex);
-    }
 
-    // Check if this point was added to a zone
-    Map<label>::iterator pzit = addedPointZones_.find(pIndex);
+        // Check if this point was added to a zone
+        Map<label>::iterator pzit = addedPointZones_.find(pIndex);
 
-    if (pzit != addedPointZones_.end())
-    {
-        addedPointZones_.erase(pzit);
+        if (pzit != addedPointZones_.end())
+        {
+            addedPointZones_.erase(pzit);
+        }
     }
 
     // Update coupled point maps, if necessary.
@@ -1882,6 +1883,31 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
             FatalErrorIn("void dynamicTopoFvMesh::readOptionalParameters()")
                 << " Swap deviation out of range [0..1]"
                 << abort(FatalError);
+        }
+    }
+
+    // Check for boundary layer point zones
+    if (meshSubDict.found("boundaryLayerZones") || mandatory_)
+    {
+        const pointZoneMesh& pZones = polyMesh::pointZones();
+        const wordList blZones(meshSubDict.subDict("boundaryLayerZones").toc());
+
+        blZones_.setSize(blZones.size());
+
+        forAll(blZones, zoneI)
+        {
+            const word& pZoneName = blZones[zoneI];
+            const label zoneID = pZones.findZoneID(pZoneName);
+
+            if (zoneID == -1)
+            {
+                FatalErrorIn("void dynamicTopoFvMesh::readOptionalParameters()")
+                    << " Could not find a point zone named: " << pZoneName
+                    << " in the mesh."
+                    << abort(FatalError);
+            }
+
+            blZones_[zoneI] = zoneID;
         }
     }
 

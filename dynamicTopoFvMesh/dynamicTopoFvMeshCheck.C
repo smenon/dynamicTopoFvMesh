@@ -236,6 +236,7 @@ dynamicTopoFvMesh::checkEdgeBoundary
     FixedList<bool, 2> edgeBoundary(false);
 
     const edge& edgeToCheck = edges_[eIndex];
+    const pointZoneMesh& pZones = polyMesh::pointZones();
 
     // Loop through edges connected to both points,
     // and check if any of them lie on boundaries.
@@ -243,6 +244,51 @@ dynamicTopoFvMesh::checkEdgeBoundary
     forAll(edgeToCheck, pointI)
     {
         const label pIndex = edgeToCheck[pointI];
+
+        // Check if this point was added to a zone
+        label addedZone = -1;
+
+        if (pIndex >= nOldPoints_)
+        {
+            Map<label>::const_iterator pzit = addedPointZones_.find(pIndex);
+
+            if (pzit != addedPointZones_.end())
+            {
+                addedZone = pzit();
+            }
+        }
+
+        // Check if the point belongs to a boundary layer zone
+        forAll(blZones_, zoneI)
+        {
+            const label zoneID = blZones_[zoneI];
+
+            if (pIndex < nOldPoints_)
+            {
+                const label local = pZones[zoneID].whichPoint(pIndex);
+
+                if (local > -1)
+                {
+                    edgeBoundary[pointI] = true;
+                    break;
+                }
+            }
+            else
+            {
+                if (addedZone == zoneID)
+                {
+                    edgeBoundary[pointI] = true;
+                    break;
+                }
+            }
+        }
+
+        if (edgeBoundary[pointI])
+        {
+            continue;
+        }
+
+        // Check for edges on boundaries
         const labelList& pEdges = pointEdges_[pIndex];
 
         forAll(pEdges, edgeI)

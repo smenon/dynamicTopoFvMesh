@@ -2386,7 +2386,7 @@ void mesquiteMotionSolver::initParallelSurfaceSmoothing()
 
     forAll(bdyMarker, indexI)
     {
-        if (bdyMarker[indexI] > vector(0.5,0.5,0.5))
+        if (bdyMarker[indexI] > vector(0.5, 0.5, 0.5))
         {
             bdy_[indexI] = vector::zero;
         }
@@ -3633,15 +3633,15 @@ void mesquiteMotionSolver::applyBCs
     // If no boundaries were fixed, fix a few points at random
     if (bdy_.size())
     {
-        if (Foam::min(bdy_) > vector(0.5,0.5,0.5))
+        if (Foam::min(bdy_) > vector(0.5, 0.5, 0.5))
         {
             Random randomizer(std::time(NULL));
 
             label nFix = 0; //(field.size()*5)/100;
 
-            for(label i = 0; i < nFix; i++)
+            for (label i = 0; i < nFix; i++)
             {
-                field[randomizer.integer(0, field.size()-1)] = vector::zero;
+                field[randomizer.integer(0, field.size() - 1)] = vector::zero;
             }
         }
     }

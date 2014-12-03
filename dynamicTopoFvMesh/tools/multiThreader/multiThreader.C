@@ -418,7 +418,7 @@ void multiThreader::destroyThreadPool()
         broadCast(poolInfo_->queueNotFull);
 
         // Wait for all workers to exit
-        for(int i=0; i < numThreads_; i++)
+        for (int i=0; i < numThreads_; i++)
         {
             if (pthread_join(poolInfo_->threads[i],NULL))
             {

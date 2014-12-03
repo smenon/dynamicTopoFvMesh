@@ -215,6 +215,9 @@ class dynamicTopoFvMesh
         Map<label> addedFaceZones_;
         Map<label> addedCellZones_;
 
+        // Boundary layer point zones
+        labelList blZones_;
+
         // Information for field-mapping
         labelHashSet faceParents_;
         List<scalarField> faceWeights_;

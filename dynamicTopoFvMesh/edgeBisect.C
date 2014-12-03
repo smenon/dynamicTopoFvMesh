@@ -3991,7 +3991,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
             label start = cellHull.size();
 
-            for(label i = start; i < newHull.size(); i++)
+            for (label i = start; i < newHull.size(); i++)
             {
                 newHull[i] = addedCellIndices[i - start];
             }

@@ -93,13 +93,13 @@ inline void Stack::remove(const label index)
         label n = 0;
 
         // Copy items upto location
-        for(label i = 0; i < loc; i++)
+        for (label i = 0; i < loc; i++)
         {
             newList[n++] = stack_[i];
         }
 
         // Copy items from location
-        for(label i = (loc + 1); i < stack_.size(); i++)
+        for (label i = (loc + 1); i < stack_.size(); i++)
         {
             newList[n++] = stack_[i];
         }
