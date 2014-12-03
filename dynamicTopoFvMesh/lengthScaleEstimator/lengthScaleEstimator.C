@@ -1105,7 +1105,7 @@ void lengthScaleEstimator::calculateLengthScale
     const labelListList& cc = mesh_.cellCells();
     const polyBoundaryMesh& boundary = mesh_.boundaryMesh();
 
-    forAll(boundary,patchI)
+    forAll(boundary, patchI)
     {
         // Skip floating length-scale patches
         if (isFreePatch(patchI))
@@ -1117,7 +1117,7 @@ void lengthScaleEstimator::calculateLengthScale
 
         label pStart = bdyPatch.start();
 
-        forAll(bdyPatch,faceI)
+        forAll(bdyPatch, faceI)
         {
             label ownCell = own[pStart+faceI];
 
@@ -1296,7 +1296,7 @@ void lengthScaleEstimator::calculateLengthScale
 
         // Loop through cells, and increment neighbour
         // cells of the current level
-        forAll(currLvlCells,cellI)
+        forAll(currLvlCells, cellI)
         {
             // Obtain the cells neighbouring this one
             const labelList& cList = cc[currLvlCells[cellI]];

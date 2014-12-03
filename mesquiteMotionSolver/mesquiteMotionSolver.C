@@ -3111,13 +3111,13 @@ void mesquiteMotionSolver::computeCentroids
     labelField nCellFaces(mesh().nCells(), 0);
     vectorField cEst(mesh().nCells(), vector::zero);
 
-    forAll (own, faceI)
+    forAll(own, faceI)
     {
         cEst[own[faceI]] += fCtrs[faceI];
         nCellFaces[own[faceI]] += 1;
     }
 
-    forAll (nei, faceI)
+    forAll(nei, faceI)
     {
         cEst[nei[faceI]] += fCtrs[faceI];
         nCellFaces[nei[faceI]] += 1;
@@ -3716,7 +3716,7 @@ scalar mesquiteMotionSolver::cmptSumMag
 {
     scalar cSum = 0.0, m = 0.0;
 
-    forAll(field,i)
+    forAll(field, i)
     {
         m = pointMarker_[i];
         cSum += m*(mag(field[i].x()) + mag(field[i].y()) + mag(field[i].z()));
@@ -3746,10 +3746,10 @@ label mesquiteMotionSolver::CG
     reduce(maxIter, sumOp<label>());
 
     // Compute initial residual
-    A(x,w);
+    A(x, w);
 
     // Compute the normFactor, using 'r' as scratch-space
-    scalar norm = normFactor(x,b,w,r);
+    scalar norm = normFactor(x, b, w, r);
 
     if (debug)
     {
@@ -3758,7 +3758,7 @@ label mesquiteMotionSolver::CG
 
     r = b - w;
     p = r;
-    rho = dot(r,p);
+    rho = dot(r, p);
 
     // Obtain the normalized residual
     residual = cmptSumMag(r)/norm;
@@ -3767,9 +3767,9 @@ label mesquiteMotionSolver::CG
 
     while ( (iter < maxIter) && (residual > tolerance_) )
     {
-        A(p,w);
+        A(p, w);
 
-        wApA = dot(p,w);
+        wApA = dot(p, w);
 
         if ((mag(wApA)/norm) < VSMALL)
         {
@@ -3780,7 +3780,7 @@ label mesquiteMotionSolver::CG
 
         alpha = rho / wApA;
 
-        forAll (x, i)
+        forAll(x, i)
         {
             x[i] += (alpha*p[i]);
             r[i] -= (alpha*w[i]);
@@ -3788,11 +3788,11 @@ label mesquiteMotionSolver::CG
 
         rhoOld = rho;
 
-        rho = dot(r,r);
+        rho = dot(r, r);
 
         beta = rho / rhoOld;
 
-        forAll (p, i)
+        forAll(p, i)
         {
             p[i] = r[i] + (beta*p[i]);
         }
@@ -4100,7 +4100,7 @@ void mesquiteMotionSolver::smoothSurfaces()
             const label pOffset = offsets_[patchI];
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
-            forAll(meshPts,pointI)
+            forAll(meshPts, pointI)
             {
                 xV_[pointI + pOffset] = refPoints_[meshPts[pointI]];
             }
@@ -4121,7 +4121,7 @@ void mesquiteMotionSolver::smoothSurfaces()
             const label pOffset = offsets_[patchI];
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
-            forAll(meshPts,pointI)
+            forAll(meshPts, pointI)
             {
                 refPoints_[meshPts[pointI]] =
                 (
@@ -4155,7 +4155,7 @@ void mesquiteMotionSolver::smoothSurfaces()
             const label pOffset = offsets_[patchI];
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
-            forAll(meshPts,pointI)
+            forAll(meshPts, pointI)
             {
                 xV_[pointI + pOffset] = refPoints_[meshPts[pointI]];
             }
@@ -4579,7 +4579,7 @@ void mesquiteMotionSolver::correctGlobalVolume()
                     boundary[pIDs_[patchI]].meshPoints()
                 );
 
-                forAll(meshPts,pointI)
+                forAll(meshPts, pointI)
                 {
                     refPoints_[meshPts[pointI]] +=
                     (
@@ -4590,7 +4590,7 @@ void mesquiteMotionSolver::correctGlobalVolume()
 
             domainVolume = 0;
 
-            forAll(allCells,cellI)
+            forAll(allCells, cellI)
             {
                 domainVolume += tetQuality(cellI, refPoints_, true);
             }
@@ -4617,7 +4617,7 @@ void mesquiteMotionSolver::correctGlobalVolume()
         {
             const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
-            forAll(meshPts,pointI)
+            forAll(meshPts, pointI)
             {
                 // Move all surface points in the
                 // point normal direction by magVal
@@ -4793,7 +4793,7 @@ void mesquiteMotionSolver::preparePointNormals()
         // First update localPoints with latest point positions
         const labelList& meshPts = boundary[pIDs_[patchI]].meshPoints();
 
-        forAll(meshPts,pointI)
+        forAll(meshPts, pointI)
         {
             localPts_[patchI][pointI] = refPoints_[meshPts[pointI]];
         }

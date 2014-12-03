@@ -93,10 +93,10 @@ inline void findPrismFaces
     const UList<face>& faces,
     const UList<cell>& cells,
     const UList<label>& neighbour,
-    FixedList<face,2>& bdyf,
-    FixedList<label,2>& bidx,
-    FixedList<face,2>& intf,
-    FixedList<label,2>& iidx
+    FixedList<face, 2>& bdyf,
+    FixedList<label, 2>& bidx,
+    FixedList<face, 2>& intf,
+    FixedList<label, 2>& iidx
 )
 {
     label indexO = 0, indexI = 0;

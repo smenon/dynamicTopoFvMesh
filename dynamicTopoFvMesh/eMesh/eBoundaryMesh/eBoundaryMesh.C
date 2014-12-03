@@ -133,7 +133,7 @@ wordList eBoundaryMesh::types() const
 
     wordList t(patches.size());
 
-    forAll (patches, patchI)
+    forAll(patches, patchI)
     {
         t[patchI] = patches[patchI].type();
     }
@@ -149,7 +149,7 @@ wordList eBoundaryMesh::names() const
 
     wordList t(patches.size());
 
-    forAll (patches, patchI)
+    forAll(patches, patchI)
     {
         t[patchI] = patches[patchI].name();
     }
@@ -165,7 +165,7 @@ labelList eBoundaryMesh::patchSizes() const
 
     labelList t(patches.size());
 
-    forAll (patches, patchI)
+    forAll(patches, patchI)
     {
         t[patchI] = patches[patchI].size();
     }
@@ -181,7 +181,7 @@ labelList eBoundaryMesh::patchStarts() const
 
     labelList t(patches.size());
 
-    forAll (patches, patchI)
+    forAll(patches, patchI)
     {
         t[patchI] = patches[patchI].start();
     }
@@ -211,7 +211,7 @@ label eBoundaryMesh::whichPatch(const label edgeIndex) const
         return -1;
     }
 
-    forAll (*this, patchI)
+    forAll(*this, patchI)
     {
         const ePatch& bp = operator[](patchI);
 
@@ -244,7 +244,7 @@ label eBoundaryMesh::findPatchID(const word& patchName) const
 {
     const ePatchList& patches = *this;
 
-    forAll (patches, patchI)
+    forAll(patches, patchI)
     {
         if (patches[patchI].name() == patchName)
         {

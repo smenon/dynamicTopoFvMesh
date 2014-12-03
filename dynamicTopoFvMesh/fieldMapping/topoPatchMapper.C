@@ -435,7 +435,7 @@ void topoPatchMapper::calcInverseDistanceWeights() const
             scalar totalWeight = 0.0;
             w[faceI] = scalarList(mo.size(), 0.0);
 
-            forAll (mo, oldFaceI)
+            forAll(mo, oldFaceI)
             {
                 w[faceI][oldFaceI] =
                 (
@@ -456,7 +456,7 @@ void topoPatchMapper::calcInverseDistanceWeights() const
             // Normalize weights
             scalar normFactor = (1.0/totalWeight);
 
-            forAll (mo, oldFaceI)
+            forAll(mo, oldFaceI)
             {
                 w[faceI][oldFaceI] *= normFactor;
             }

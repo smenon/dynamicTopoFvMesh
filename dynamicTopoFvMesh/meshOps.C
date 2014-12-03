@@ -309,7 +309,7 @@ inline void constructHull
                         if
                         (
                             edges[rFaceEdges[edgeI]]
-                         == edge(otherPoint,nextHullPoint)
+                         == edge(otherPoint, nextHullPoint)
                         )
                         {
                             hullEdges[indexI] = rFaceEdges[edgeI];

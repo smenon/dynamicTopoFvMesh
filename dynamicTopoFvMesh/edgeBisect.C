@@ -2085,7 +2085,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
         const List<objectMap>& afList = slaveMap.addedFaceList();
 
-        forAll (checkFaces, indexI)
+        forAll(checkFaces, indexI)
         {
             const face& mFace = faces_[checkFaces[indexI]];
 
@@ -2760,9 +2760,9 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // Hull variables
     face tmpTriFace(3);
     edge origEdge(edges_[eIndex]);
-    labelList tmpEdgeFaces(3,-1);
-    labelList tmpIntEdgeFaces(4,-1);
-    labelList tmpFaceEdges(3,-1);
+    labelList tmpEdgeFaces(3, -1);
+    labelList tmpFaceEdges(3, -1);
+    labelList tmpIntEdgeFaces(4, -1);
 
     // Build vertexHull for this edge
     labelList vertexHull;
@@ -2880,8 +2880,8 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         insertEdge
         (
             nePatch,
-            edge(newPointIndex,edges_[eIndex][1]),
-            labelList(faceHull.size(),-1)
+            edge(newPointIndex, edges_[eIndex][1]),
+            labelList(faceHull.size(), -1)
         )
     );
 
@@ -2902,10 +2902,10 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     map.addEdge(eIndex);
 
     // Keep track of added entities
-    labelList addedCellIndices(cellHull.size(),-1);
-    labelList addedFaceIndices(faceHull.size(),-1);
-    labelList addedEdgeIndices(faceHull.size(),-1);
-    labelList addedIntFaceIndices(faceHull.size(),-1);
+    labelList addedCellIndices(cellHull.size(), -1);
+    labelList addedFaceIndices(faceHull.size(), -1);
+    labelList addedEdgeIndices(faceHull.size(), -1);
+    labelList addedIntFaceIndices(faceHull.size(), -1);
 
     // Now loop through the hull and bisect individual entities
     forAll(vertexHull, indexI)
@@ -3048,7 +3048,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     insertEdge
                     (
                         whichPatch(faceHull[indexI]),
-                        edge(newPointIndex,vertexHull[indexI]),
+                        edge(newPointIndex, vertexHull[indexI]),
                         tmpEdgeFaces
                     )
                 );
@@ -3129,7 +3129,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     insertEdge
                     (
                         -1,
-                        edge(newPointIndex,vertexHull[indexI]),
+                        edge(newPointIndex, vertexHull[indexI]),
                         tmpIntEdgeFaces
                     )
                 );
@@ -3219,7 +3219,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                     insertEdge
                     (
                         -1,
-                        edge(newPointIndex,vertexHull[0]),
+                        edge(newPointIndex, vertexHull[0]),
                         tmpIntEdgeFaces
                     )
                 );
@@ -3310,7 +3310,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 insertEdge
                 (
                     whichPatch(faceHull[indexI]),
-                    edge(newPointIndex,vertexHull[indexI]),
+                    edge(newPointIndex, vertexHull[indexI]),
                     tmpEdgeFaces
                 )
             );

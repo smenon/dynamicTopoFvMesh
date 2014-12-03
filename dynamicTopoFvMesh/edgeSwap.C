@@ -296,19 +296,19 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
     face f;
     bool found = false;
     label commonIndex = -1;
-    FixedList<label,4> otherPointIndex(-1), nextToOtherPoint(-1);
-    FixedList<label,2> c0BdyIndex(-1), c0IntIndex(-1);
-    FixedList<label,2> c1BdyIndex(-1), c1IntIndex(-1);
-    FixedList<face,2> c0BdyFace(face(3)), c0IntFace(face(4));
-    FixedList<face,2> c1BdyFace(face(3)), c1IntFace(face(4));
-    FixedList<label,2> commonEdgeIndex(-1);
-    FixedList<edge,2> commonEdges(edge(-1, -1));
-    FixedList<label,4> otherEdgeIndex(-1);
-    FixedList<label,4> commonFaceIndex(-1), cornerEdgeIndex(-1);
-    FixedList<face,4> commonFaces(face(3)), commonIntFaces(face(4));
-    FixedList<label,4> commonIntFaceIndex(-1);
-    FixedList<bool,2> foundTriFace0(false), foundTriFace1(false);
-    FixedList<face,2> triFaces0(face(3)), triFaces1(face(3));
+    FixedList<label, 4> otherPointIndex(-1), nextToOtherPoint(-1);
+    FixedList<label, 2> c0BdyIndex(-1), c0IntIndex(-1);
+    FixedList<label, 2> c1BdyIndex(-1), c1IntIndex(-1);
+    FixedList<face, 2> c0BdyFace(face(3)), c0IntFace(face(4));
+    FixedList<face, 2> c1BdyFace(face(3)), c1IntFace(face(4));
+    FixedList<label, 2> commonEdgeIndex(-1);
+    FixedList<edge, 2> commonEdges(edge(-1, -1));
+    FixedList<label, 4> otherEdgeIndex(-1);
+    FixedList<label, 4> commonFaceIndex(-1), cornerEdgeIndex(-1);
+    FixedList<face, 4> commonFaces(face(3)), commonIntFaces(face(4));
+    FixedList<label, 4> commonIntFaceIndex(-1);
+    FixedList<bool, 2> foundTriFace0(false), foundTriFace1(false);
+    FixedList<face, 2> triFaces0(face(3)), triFaces1(face(3));
 
     if (coupledModification_)
     {
@@ -529,7 +529,7 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
     triFaceOldPoints[1][2] = otherPointIndex[0];
 
     // Assume XY plane here
-    vector n = vector(0,0,1);
+    vector n = vector(0, 0, 1);
 
     forAll(triFaceOldPoints, faceI)
     {
@@ -580,7 +580,7 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 
     const labelList& e1 = faceEdges_[c0IntIndex[0]];
 
-    forAll(e1,edgeI)
+    forAll(e1, edgeI)
     {
         if (e1[edgeI] == otherEdgeIndex[0])
         {
@@ -605,7 +605,7 @@ const changeMap dynamicTopoFvMesh::swapQuadFace
 
     const labelList& e3 = faceEdges_[c1IntIndex[0]];
 
-    forAll(e3,edgeI)
+    forAll(e3, edgeI)
     {
         if (e3[edgeI] == otherEdgeIndex[0])
         {
@@ -1077,9 +1077,9 @@ void dynamicTopoFvMesh::initTables
     if (checkIndex != -1)
     {
         m[checkIndex] = -1;
-        Q[checkIndex].setSize((mMax-2),scalarList(mMax,-1.0));
-        K[checkIndex].setSize((mMax-2),labelList(mMax,-1));
-        triangulations[checkIndex].setSize(3,labelList((mMax-2),-1));
+        Q[checkIndex].setSize((mMax - 2), scalarList(mMax, -1.0));
+        K[checkIndex].setSize((mMax - 2), labelList(mMax, -1));
+        triangulations[checkIndex].setSize(3, labelList((mMax - 2), -1));
 
         return;
     }
@@ -1097,19 +1097,19 @@ void dynamicTopoFvMesh::initTables
         Q.set
         (
             indexI,
-            new scalarListList((mMax-2),scalarList(mMax,-1.0))
+            new scalarListList((mMax - 2), scalarList(mMax, -1.0))
         );
 
         K.set
         (
             indexI,
-            new labelListList((mMax-2),labelList(mMax,-1))
+            new labelListList((mMax - 2), labelList(mMax, -1))
         );
 
         triangulations.set
         (
             indexI,
-            new labelListList(3,labelList((mMax-2),-1))
+            new labelListList(3, labelList((mMax - 2), -1))
         );
     }
 }
@@ -1865,8 +1865,8 @@ void dynamicTopoFvMesh::extractTriangulation
         numTriangulations++;
 
         // Recursively call the function for the two sub-triangulations
-        extractTriangulation(i,k,K,numTriangulations,triangulations);
-        extractTriangulation(k,j,K,numTriangulations,triangulations);
+        extractTriangulation(i, k, K, numTriangulations, triangulations);
+        extractTriangulation(k, j, K, numTriangulations, triangulations);
     }
 }
 
@@ -2303,7 +2303,7 @@ const changeMap dynamicTopoFvMesh::swap23
     label vertexForRemoval = hullVertices[isolatedVertex];
 
     // Determine the two cells to be removed
-    FixedList<label,2> cellsForRemoval;
+    FixedList<label, 2> cellsForRemoval;
     cellsForRemoval[0] = owner_[faceForRemoval];
     cellsForRemoval[1] = neighbour_[faceForRemoval];
 
@@ -2402,7 +2402,7 @@ const changeMap dynamicTopoFvMesh::swap23
     }
 
     // Add three new cells to the end of the cell list
-    FixedList<label,3> newCellIndex(-1);
+    FixedList<label, 3> newCellIndex(-1);
     FixedList<cell, 3> newTetCell(cell(4));
 
     forAll(newCellIndex, cellI)
@@ -2431,7 +2431,7 @@ const changeMap dynamicTopoFvMesh::swap23
     // Obtain point-ordering for the other vertices
     // otherVertices[0] is the point before isolatedVertex
     // otherVertices[1] is the point after isolatedVertex
-    FixedList<label,2> otherVertices;
+    FixedList<label, 2> otherVertices;
 
     if (triangulations[0][triangulationIndex] == isolatedVertex)
     {
@@ -2451,7 +2451,7 @@ const changeMap dynamicTopoFvMesh::swap23
     }
 
     // Insert three new internal faces
-    FixedList<label,3> newFaceIndex;
+    FixedList<label, 3> newFaceIndex;
     face tmpTriFace(3);
 
     // First face: The actual triangulation
@@ -2542,7 +2542,7 @@ const changeMap dynamicTopoFvMesh::swap23
     map.addEdge(newEdgeIndex);
 
     // Define the six edges to check while building faceEdges:
-    FixedList<edge,6> check;
+    FixedList<edge, 6> check;
 
     check[0][0] = vertexForRemoval; check[0][1] = otherVertices[0];
     check[1][0] = vertexForRemoval; check[1][1] = otherVertices[1];
@@ -2553,7 +2553,7 @@ const changeMap dynamicTopoFvMesh::swap23
 
     // Add three new entries to faceEdges
     label nE0 = 0, nE1 = 0, nE2 = 0;
-    FixedList<labelList,3> newFaceEdges(labelList(3));
+    FixedList<labelList, 3> newFaceEdges(labelList(3));
 
     newFaceEdges[0][nE0++] = newEdgeIndex;
     newFaceEdges[1][nE1++] = newEdgeIndex;
@@ -2562,7 +2562,7 @@ const changeMap dynamicTopoFvMesh::swap23
     // Fill-in information for the three new cells,
     // and correct info on existing neighbouring cells
     label nF0 = 0, nF1 = 0, nF2 = 0;
-    FixedList<bool,2> foundEdge;
+    FixedList<bool, 2> foundEdge;
 
     // Add the newly created faces to cells
     newTetCell[0][nF0++] = newFaceIndex[0];
@@ -2924,7 +2924,7 @@ const changeMap dynamicTopoFvMesh::swap32
     label edgePatch = whichEdgePatch(eIndex);
 
     // Determine the three faces to be removed
-    FixedList<label,3> facesForRemoval;
+    FixedList<label, 3> facesForRemoval;
     DynamicList<label> cellRemovalList(3);
 
     forAll(facesForRemoval, faceI)
@@ -3018,7 +3018,7 @@ const changeMap dynamicTopoFvMesh::swap32
     }
 
     // Add two new cells to the end of the cell list
-    FixedList<label,2> newCellIndex(-1);
+    FixedList<label, 2> newCellIndex(-1);
     FixedList<cell, 2> newTetCell(cell(4));
 
     forAll(newCellIndex, cellI)
@@ -3068,7 +3068,7 @@ const changeMap dynamicTopoFvMesh::swap32
     map.index() = newFaceIndex;
 
     // Define the three edges to check while building faceEdges:
-    FixedList<edge,3> check;
+    FixedList<edge, 3> check;
 
     check[0][0] = newTriFace[0]; check[0][1] = newTriFace[1];
     check[1][0] = newTriFace[1]; check[1][1] = newTriFace[2];
@@ -3076,14 +3076,14 @@ const changeMap dynamicTopoFvMesh::swap32
 
     // For 2-2 swaps, two faces are introduced
     label nE = 0, nBf = 0;
-    FixedList<label,2> nBE(0);
-    FixedList<labelList,2> bdyFaceEdges(labelList(3, -1));
+    FixedList<label, 2> nBE(0);
+    FixedList<labelList, 2> bdyFaceEdges(labelList(3, -1));
 
     // Fill-in information for the two new cells,
     // and correct info on existing neighbouring cells
     label nF0 = 0, nF1 = 0;
     label otherPoint = -1, nextPoint = -1;
-    FixedList<bool,2> foundEdge;
+    FixedList<bool, 2> foundEdge;
 
     // For a 2-2 swap on a boundary edge,
     // add two boundary faces and an edge
@@ -3095,9 +3095,9 @@ const changeMap dynamicTopoFvMesh::swap32
         // Temporary local variables
         label facePatch = -1;
         edge newEdge(-1, -1);
-        FixedList<label,2> nBEdge(0);
-        FixedList<FixedList<label,2>,2> bdyEdges;
-        FixedList<face,2> newBdyTriFace(face(3));
+        FixedList<label, 2> nBEdge(0);
+        FixedList<FixedList<label, 2>, 2> bdyEdges;
+        FixedList<face, 2> newBdyTriFace(face(3));
 
         // Get a cue for face orientation from existing faces
         forAll(facesForRemoval, faceI)

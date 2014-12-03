@@ -1553,14 +1553,14 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             Pout<< nl << "Cells belonging to first Edge Hull: "
                 << hullCells[0] << nl;
 
-            forAll(hullCells[0],cellI)
+            forAll(hullCells[0], cellI)
             {
                 const cell& firstCurCell = cells_[hullCells[0][cellI]];
 
                 Pout<< "Cell: " << hullCells[0][cellI]
                     << ": " << firstCurCell << nl;
 
-                forAll(firstCurCell,faceI)
+                forAll(firstCurCell, faceI)
                 {
                     Pout<< " Face: " << firstCurCell[faceI]
                         << " : " << faces_[firstCurCell[faceI]]
@@ -1586,7 +1586,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             Pout<< nl << "First Edge Face Hull: "
                 << firstEdgeFaces << nl;
 
-            forAll(firstEdgeFaces,indexI)
+            forAll(firstEdgeFaces, indexI)
             {
                 Pout<< " Face: " << firstEdgeFaces[indexI]
                     << " : " << faces_[firstEdgeFaces[indexI]]
@@ -1709,7 +1709,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         const labelList& firstEdgeFaces = edgeFaces_[checkEdgeIndex[1]];
 
         // Collapse to the second node...
-        forAll(firstEdgeFaces,faceI)
+        forAll(firstEdgeFaces, faceI)
         {
             // Replace point indices on faces.
             meshOps::replaceLabel
@@ -1945,7 +1945,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Correct faceEdges / edgeFaces for quad-faces...
-        forAll(firstEdgeFaces,faceI)
+        forAll(firstEdgeFaces, faceI)
         {
             meshOps::replaceLabel
             (
@@ -2004,17 +2004,17 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         );
 
         // Replace point labels on all triangular boundary faces.
-        forAll(hullCells[0],cellI)
+        forAll(hullCells[0], cellI)
         {
             const cell& cellToCheck = cells_[hullCells[0][cellI]];
 
-            forAll(cellToCheck,faceI)
+            forAll(cellToCheck, faceI)
             {
                 face& faceToCheck = faces_[cellToCheck[faceI]];
 
                 if (faceToCheck.size() == 3)
                 {
-                    forAll(faceToCheck,pointI)
+                    forAll(faceToCheck, pointI)
                     {
                         if (faceToCheck[pointI] == cv0)
                         {
@@ -2066,7 +2066,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         const labelList& secondEdgeFaces = edgeFaces_[checkEdgeIndex[2]];
 
         // Collapse to the first node
-        forAll(secondEdgeFaces,faceI)
+        forAll(secondEdgeFaces, faceI)
         {
             // Replace point indices on faces.
             meshOps::replaceLabel
@@ -2302,7 +2302,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
         }
 
         // Correct faceEdges / edgeFaces for quad-faces...
-        forAll(secondEdgeFaces,faceI)
+        forAll(secondEdgeFaces, faceI)
         {
             meshOps::replaceLabel
             (
@@ -2885,7 +2885,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
     // and correct the cells that contain discarded faces
     const cell& cell_0 = cells_[c0];
 
-    forAll(cell_0,faceI)
+    forAll(cell_0, faceI)
     {
         if (cell_0[faceI] != fIndex && cell_0[faceI] != faceToKeep[0])
         {

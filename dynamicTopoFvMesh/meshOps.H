@@ -86,10 +86,10 @@ namespace meshOps
         const UList<face>& faces,
         const UList<cell>& cells,
         const UList<label>& neighbour,
-        FixedList<face,2>& bdyf,
-        FixedList<label,2>& bidx,
-        FixedList<face,2>& intf,
-        FixedList<label,2>& iidx
+        FixedList<face, 2>& bdyf,
+        FixedList<label, 2>& bidx,
+        FixedList<face, 2>& intf,
+        FixedList<label, 2>& iidx
     );
 
     // Utility method to build a hull of cells
@@ -246,7 +246,7 @@ namespace meshOps
     inline void pWrite
     (
         const label toID,
-        const FixedList<Type,Size>& data
+        const FixedList<Type, Size>& data
     );
 
     // Parallel send (for lists)
@@ -270,7 +270,7 @@ namespace meshOps
     inline void pRead
     (
         const label fromID,
-        FixedList<Type,Size>& data
+        FixedList<Type, Size>& data
     );
 
     // Parallel receive (for lists)

@@ -52,12 +52,12 @@ namespace Foam
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-defineTypeNameAndDebug(Knupp,0);
-defineTypeNameAndDebug(Dihedral,0);
-defineTypeNameAndDebug(cubicMeanRatio,0);
-defineTypeNameAndDebug(Frobenius,0);
-defineTypeNameAndDebug(PGH,0);
-defineTypeNameAndDebug(CSG,0);
+defineTypeNameAndDebug(Knupp, 0);
+defineTypeNameAndDebug(Dihedral, 0);
+defineTypeNameAndDebug(cubicMeanRatio, 0);
+defineTypeNameAndDebug(Frobenius, 0);
+defineTypeNameAndDebug(PGH, 0);
+defineTypeNameAndDebug(CSG, 0);
 
 
 addToMemberFunctionSelectionTable(tetMetric, Knupp, metric, Point);
@@ -71,12 +71,12 @@ addToMemberFunctionSelectionTable(tetMetric, CSG, metric, Point);
 // Enumeration for tets
 label Dihedral::tetEnum[6][4] =
 {
-    {0,1,2,3},
-    {0,2,3,1},
-    {0,3,1,2},
-    {1,2,0,3},
-    {1,3,0,2},
-    {2,3,0,1}
+    {0, 1, 2, 3},
+    {0, 2, 3, 1},
+    {0, 3, 1, 2},
+    {1, 2, 0, 3},
+    {1, 3, 0, 2},
+    {2, 3, 0, 1}
 };
 
 // * * * * * * * * * * * * * Static Members Functions * * * * * * * * * * *  //
@@ -117,8 +117,8 @@ scalar Dihedral::metric
 )
 {
     scalar minAngle = 0.0;
-    FixedList<scalar,6> cosAngles(1.0);
-    FixedList<vector,4> pts(vector::zero);
+    FixedList<scalar, 6> cosAngles(1.0);
+    FixedList<vector, 4> pts(vector::zero);
 
     // Assign point-positions
     pts[0] = p0;

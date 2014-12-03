@@ -62,7 +62,7 @@ namespace Foam
 
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
-defineTypeNameAndDebug(dynamicTopoFvMesh,0);
+defineTypeNameAndDebug(dynamicTopoFvMesh, 0);
 
 addToRunTimeSelectionTable(dynamicFvMesh, dynamicTopoFvMesh, IOobject);
 
@@ -794,7 +794,7 @@ label dynamicTopoFvMesh::insertEdge
 
     // Keep track of added edges in a separate hash-table
     // This information will be required at the reordering stage
-    addedEdgePatches_.insert(newEdgeIndex,patch);
+    addedEdgePatches_.insert(newEdgeIndex, patch);
 
     if (patch >= 0)
     {
@@ -2613,8 +2613,8 @@ void dynamicTopoFvMesh::remove2DSlivers()
         }
 
         // Find the prism faces
-        FixedList<label,2> cBdyIndex(-1), cIntIndex(-1);
-        FixedList<face,2> cBdyFace, cIntFace;
+        FixedList<label, 2> cBdyIndex(-1), cIntIndex(-1);
+        FixedList<face, 2> cBdyFace, cIntFace;
 
         meshOps::findPrismFaces
         (
@@ -2836,7 +2836,7 @@ const changeMap dynamicTopoFvMesh::identifySliverType
     label fourthPoint = -1;
     scalar minDistance = GREAT;
     face tFace(3), testFace(3), faceToCheck(3);
-    FixedList<edge, 2> edgeToCheck(edge(-1,-1));
+    FixedList<edge, 2> edgeToCheck(edge(-1, -1));
 
     const cell& cellToCheck = cells_[cIndex];
 
@@ -3586,8 +3586,8 @@ void dynamicTopoFvMesh::getCheckEdges
     const label fIndex,
     const dynamicTopoFvMesh& mesh,
     changeMap& map,
-    FixedList<edge,4>& checkEdge,
-    FixedList<label,4>& checkEdgeIndex
+    FixedList<edge, 4>& checkEdge,
+    FixedList<label, 4>& checkEdgeIndex
 )
 {
     checkEdgeIndex[0] = mesh.getTriBoundaryEdge(fIndex);
@@ -4559,11 +4559,11 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm)
     conservativeMapVolFields<vector>(fieldMapper);
 
     // Map all the volFields in the objectRegistry
-    MapGeometricFields<sphericalTensor,fvPatchField,topoMapper,volMesh>
+    MapGeometricFields<sphericalTensor, fvPatchField, topoMapper, volMesh>
         (fieldMapper);
-    MapGeometricFields<symmTensor,fvPatchField,topoMapper,volMesh>
+    MapGeometricFields<symmTensor, fvPatchField, topoMapper, volMesh>
         (fieldMapper);
-    MapGeometricFields<tensor,fvPatchField,topoMapper,volMesh>
+    MapGeometricFields<tensor, fvPatchField, topoMapper, volMesh>
         (fieldMapper);
 
     // Conservatively map scalar/vector surfaceFields
@@ -4571,11 +4571,11 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm)
     conservativeMapSurfaceFields<vector>(fieldMapper);
 
     // Map all the surfaceFields in the objectRegistry
-    MapGeometricFields<sphericalTensor,fvsPatchField,topoMapper,surfaceMesh>
+    MapGeometricFields<sphericalTensor, fvsPatchField, topoMapper, surfaceMesh>
         (fieldMapper);
-    MapGeometricFields<symmTensor,fvsPatchField,topoMapper,surfaceMesh>
+    MapGeometricFields<symmTensor, fvsPatchField, topoMapper, surfaceMesh>
         (fieldMapper);
-    MapGeometricFields<tensor,fvsPatchField,topoMapper,surfaceMesh>
+    MapGeometricFields<tensor, fvsPatchField, topoMapper, surfaceMesh>
         (fieldMapper);
 }
 

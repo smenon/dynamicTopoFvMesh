@@ -59,7 +59,7 @@ void topoSurfaceMapper::mapInternalField
     // Flip the flux
     const labelList flipFaces = flipFaceFlux().toc();
 
-    forAll (flipFaces, i)
+    forAll(flipFaces, i)
     {
         if (flipFaces[i] < iF.size())
         {

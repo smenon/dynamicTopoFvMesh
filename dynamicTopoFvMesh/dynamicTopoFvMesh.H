@@ -398,8 +398,8 @@ class dynamicTopoFvMesh
             const label fIndex,
             const dynamicTopoFvMesh& mesh,
             changeMap& map,
-            FixedList<edge,4>& checkEdge,
-            FixedList<label,4>& checkEdgeIndex
+            FixedList<edge, 4>& checkEdge,
+            FixedList<label, 4>& checkEdgeIndex
         );
 
         // Return length-scale at an face-location in the mesh [2D]
@@ -515,11 +515,11 @@ class dynamicTopoFvMesh
         (
             const dynamicTopoFvMesh& mesh,
             const labelList& triFaces,
-            const FixedList<label,2>& c0BdyIndex,
-            const FixedList<label,2>& c1BdyIndex,
-            const FixedList<label,2>& pointIndex,
-            const FixedList<point,2>& newPoint,
-            const FixedList<point,2>& oldPoint,
+            const FixedList<label, 2>& c0BdyIndex,
+            const FixedList<label, 2>& c1BdyIndex,
+            const FixedList<label, 2>& pointIndex,
+            const FixedList<point, 2>& newPoint,
+            const FixedList<point, 2>& oldPoint,
             scalar& collapseQuality,
             const bool checkNeighbour,
             bool forceOp = false
@@ -647,7 +647,7 @@ class dynamicTopoFvMesh
         ) const;
 
         // Utility to check whether points of an edge lie on a boundary
-        const FixedList<bool,2> checkEdgeBoundary(const label eIndex) const;
+        const FixedList<bool, 2> checkEdgeBoundary(const label eIndex) const;
 
         // Set a particular face index as flipped.
         inline void setFlip(const label fIndex);

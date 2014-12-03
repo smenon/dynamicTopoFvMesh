@@ -92,7 +92,7 @@ bool dynamicTopoFvMesh::meshQuality
         if (is2D())
         {
             // Assume XY plane here
-            vector n = vector(0,0,1);
+            vector n = vector(0, 0, 1);
 
             // Get a triangular boundary face
             forAll(cellToCheck, faceI)
@@ -227,13 +227,13 @@ bool dynamicTopoFvMesh::meshQuality
 
 
 // Utility to check whether points of an edge lie on a boundary.
-const FixedList<bool,2>
+const FixedList<bool, 2>
 dynamicTopoFvMesh::checkEdgeBoundary
 (
     const label eIndex
 ) const
 {
-    FixedList<bool,2> edgeBoundary(false);
+    FixedList<bool, 2> edgeBoundary(false);
 
     const edge& edgeToCheck = edges_[eIndex];
 
@@ -242,7 +242,8 @@ dynamicTopoFvMesh::checkEdgeBoundary
     // Used to ensure that collapses happen towards boundaries.
     forAll(edgeToCheck, pointI)
     {
-        const labelList& pEdges = pointEdges_[edgeToCheck[pointI]];
+        const label pIndex = edgeToCheck[pointI];
+        const labelList& pEdges = pointEdges_[pIndex];
 
         forAll(pEdges, edgeI)
         {
@@ -1962,7 +1963,7 @@ bool dynamicTopoFvMesh::checkBisection
     tfOld[1][2] = mpOld;
 
     // Assume XY plane here
-    vector n = vector(0,0,1);
+    vector n = vector(0, 0, 1);
 
     forAll(tfNew, fI)
     {
@@ -2032,11 +2033,11 @@ bool dynamicTopoFvMesh::checkCollapse
 (
     const dynamicTopoFvMesh& mesh,
     const labelList& triFaces,
-    const FixedList<label,2>& c0BdyIndex,
-    const FixedList<label,2>& c1BdyIndex,
-    const FixedList<label,2>& pointIndex,
-    const FixedList<point,2>& newPoint,
-    const FixedList<point,2>& oldPoint,
+    const FixedList<label, 2>& c0BdyIndex,
+    const FixedList<label, 2>& c1BdyIndex,
+    const FixedList<label, 2>& pointIndex,
+    const FixedList<point, 2>& newPoint,
+    const FixedList<point, 2>& oldPoint,
     scalar& collapseQuality,
     const bool checkNeighbour,
     bool forceOp
@@ -2099,7 +2100,7 @@ bool dynamicTopoFvMesh::checkCollapse
         triPointRef tprOld(tFOld[0], tFOld[1], tFOld[2]);
 
         // Assume XY plane here
-        vector n = vector(0,0,1);
+        vector n = vector(0, 0, 1);
 
         // Compute the quality.
         // Assume centre-plane passes through origin

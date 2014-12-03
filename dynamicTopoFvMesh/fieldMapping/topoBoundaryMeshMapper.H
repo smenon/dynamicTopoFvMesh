@@ -81,7 +81,7 @@ public:
         {
             const fvBoundaryMesh& patches = mesh.boundary();
 
-            forAll (patches, patchI)
+            forAll(patches, patchI)
             {
                 set
                 (

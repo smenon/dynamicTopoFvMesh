@@ -86,7 +86,7 @@ void topoCellMapper::calcAddressing() const
 
         const List<objectMap>& cfc = mpm_.cellsFromCellsMap();
 
-        forAll (cfc, cfcI)
+        forAll(cfc, cfcI)
         {
             // Get addressing
             const labelList& mo = cfc[cfcI].masterObjects();
@@ -110,7 +110,7 @@ void topoCellMapper::calcAddressing() const
         // so check if addressing size still zero.
         const labelList& cm = mpm_.cellMap();
 
-        forAll (cm, cellI)
+        forAll(cm, cellI)
         {
             // Mapped from a single cell
             if (cm[cellI] > -1 && addr[cellI].empty())
@@ -180,7 +180,7 @@ void topoCellMapper::calcInverseDistanceWeights() const
             scalar totalWeight = 0.0;
             w[cellI] = scalarList(mo.size(), 0.0);
 
-            forAll (mo, oldCellI)
+            forAll(mo, oldCellI)
             {
                 w[cellI][oldCellI] =
                 (
@@ -201,7 +201,7 @@ void topoCellMapper::calcInverseDistanceWeights() const
             // Normalize weights
             scalar normFactor = (1.0/totalWeight);
 
-            forAll (mo, oldCellI)
+            forAll(mo, oldCellI)
             {
                 w[cellI][oldCellI] *= normFactor;
             }

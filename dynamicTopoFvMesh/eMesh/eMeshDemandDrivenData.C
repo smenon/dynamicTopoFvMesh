@@ -116,7 +116,7 @@ void eMesh::calcOrderedEdgeList()
     }
 
     // Renumber and fill in edges
-    edges_.setSize(nEdges_, edge(-1,-1));
+    edges_.setSize(nEdges_, edge(-1, -1));
 
     forAll(edges, edgeI)
     {

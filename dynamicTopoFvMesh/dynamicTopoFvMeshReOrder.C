@@ -661,7 +661,7 @@ void dynamicTopoFvMesh::reOrderFaces
 
     label faceInOrder = 0, allFaces = faces_.size();
     faceList oldFaces(allFaces);
-    labelList oldOwner(allFaces), oldNeighbour(allFaces), visited(allFaces,0);
+    labelList oldOwner(allFaces), oldNeighbour(allFaces), visited(allFaces, 0);
     labelListList oldFaceEdges(allFaces);
 
     addedFaceRenumbering_.clear();
