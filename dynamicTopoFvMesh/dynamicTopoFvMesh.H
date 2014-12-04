@@ -215,9 +215,6 @@ class dynamicTopoFvMesh
         Map<label> addedFaceZones_;
         Map<label> addedCellZones_;
 
-        // Boundary layer point zones
-        labelList blZones_;
-
         // Information for field-mapping
         labelHashSet faceParents_;
         List<scalarField> faceWeights_;
@@ -262,6 +259,9 @@ class dynamicTopoFvMesh
         scalar swapDeviation_;
         Switch allowTableResize_;
         labelList noSwapPatchIDs_;
+
+        //- Point zones where modifications are disallowed
+        labelList noModificationZones_;
 
         //- Stack-list of entities to be checked for topo-changes.
         List<Stack> entityStack_;

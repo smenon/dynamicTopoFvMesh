@@ -1886,17 +1886,17 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
         }
     }
 
-    // Check for boundary layer point zones
-    if (meshSubDict.found("boundaryLayerZones") || mandatory_)
+    // Check for point zones that disallow modifications
+    if (meshSubDict.found("noModificationZones") || mandatory_)
     {
         const pointZoneMesh& pZones = polyMesh::pointZones();
-        const wordList blZones(meshSubDict.subDict("boundaryLayerZones").toc());
+        const wordList nZones(meshSubDict.subDict("noModificationZones").toc());
 
-        blZones_.setSize(blZones.size());
+        noModificationZones_.setSize(nZones.size());
 
-        forAll(blZones, zoneI)
+        forAll(nZones, zoneI)
         {
-            const word& pZoneName = blZones[zoneI];
+            const word& pZoneName = nZones[zoneI];
             const label zoneID = pZones.findZoneID(pZoneName);
 
             if (zoneID == -1)
@@ -1907,7 +1907,7 @@ void dynamicTopoFvMesh::readOptionalParameters(bool reRead)
                     << abort(FatalError);
             }
 
-            blZones_[zoneI] = zoneID;
+            noModificationZones_[zoneI] = zoneID;
         }
     }
 
@@ -3671,7 +3671,8 @@ scalar dynamicTopoFvMesh::faceLengthScale
     // Reset the scale first
     scalar scale = 0.0;
 
-    label facePatch = whichPatch(fIndex);
+    const label facePatch = whichPatch(fIndex);
+    const lengthScaleEstimator& estimator = lengthEstimator();
 
     // Determine whether the face is internal
     if (facePatch < 0)
@@ -3688,22 +3689,25 @@ scalar dynamicTopoFvMesh::faceLengthScale
     else
     {
         // Fetch the fixed-length scale
-        scale = lengthEstimator().fixedLengthScale(fIndex, facePatch);
+        scale = estimator.fixedLengthScale(fIndex, facePatch);
+
+        // Check for an invalid length scale
+        const bool invalidScale = (mag(scale) < VSMALL);
 
         // If this is a floating face, pick the owner length-scale
-        if (lengthEstimator().isFreePatch(facePatch))
+        if (invalidScale || estimator.isFreePatch(facePatch))
         {
             scale = lengthScale_[owner_[fIndex]];
         }
 
         // If proximity-based refinement is requested,
         // test the proximity to the nearest non-neighbour.
-        if (lengthEstimator().isProximityPatch(facePatch))
+        if (estimator.isProximityPatch(facePatch))
         {
             label proximityFace = -1;
 
             // Perform a proximity-check.
-            scalar distance = testProximity(fIndex, proximityFace);
+            const scalar distance = testProximity(fIndex, proximityFace);
 
             if (debug > 3 && self() == 0)
             {
@@ -3729,7 +3733,7 @@ scalar dynamicTopoFvMesh::faceLengthScale
                 Foam::min
                 (
                     scale,
-                    ((distance / 3.0) - SMALL)/lengthEstimator().ratioMax()
+                    ((distance / 3.0) - SMALL) / estimator.ratioMax()
                 )
             );
         }
@@ -3742,7 +3746,7 @@ scalar dynamicTopoFvMesh::faceLengthScale
         }
 
         // Limit scales if necessary
-        lengthEstimator().limitScale(scale);
+        estimator.limitScale(scale);
     }
 
     return scale;
@@ -3759,8 +3763,8 @@ scalar dynamicTopoFvMesh::edgeLengthScale
     scalar scale = 0.0;
 
     const labelList& eFaces = edgeFaces_[eIndex];
-
-    label edgePatch = whichEdgePatch(eIndex);
+    const label edgePatch = whichEdgePatch(eIndex);
+    const lengthScaleEstimator& estimator = lengthEstimator();
 
     // Determine whether the edge is internal
     if (edgePatch < 0)
@@ -3778,7 +3782,8 @@ scalar dynamicTopoFvMesh::edgeLengthScale
         // Search for boundary faces, and average their scale
         forAll(eFaces, faceI)
         {
-            label facePatch = whichPatch(eFaces[faceI]);
+            const label fIndex = eFaces[faceI];
+            const label facePatch = whichPatch(fIndex);
 
             // Skip internal faces
             if (facePatch == -1)
@@ -3787,21 +3792,24 @@ scalar dynamicTopoFvMesh::edgeLengthScale
             }
 
             // If this is a floating face, pick the owner length-scale
-            if (lengthEstimator().isFreePatch(facePatch))
+            if (estimator.isFreePatch(facePatch))
             {
-                scale += lengthScale_[owner_[eFaces[faceI]]];
+                scale += lengthScale_[owner_[fIndex]];
             }
             else
             {
                 // Fetch fixed length-scale
-                scale +=
-                (
-                    lengthEstimator().fixedLengthScale
-                    (
-                        eFaces[faceI],
-                        facePatch
-                    )
-                );
+                scalar fScale = estimator.fixedLengthScale(fIndex, facePatch);
+
+                // Check for an invalid length scale
+                if (mag(fScale) < VSMALL)
+                {
+                    scale += lengthScale_[owner_[fIndex]];
+                }
+                else
+                {
+                    scale += fScale;
+                }
             }
         }
 
@@ -3809,12 +3817,12 @@ scalar dynamicTopoFvMesh::edgeLengthScale
 
         // If proximity-based refinement is requested,
         // test the proximity to the nearest non-neighbour.
-        if (lengthEstimator().isProximityPatch(edgePatch))
+        if (estimator.isProximityPatch(edgePatch))
         {
             label proximityFace = -1;
 
             // Perform a proximity-check.
-            scalar distance = testProximity(eIndex, proximityFace);
+            const scalar distance = testProximity(eIndex, proximityFace);
 
             if (debug > 3 && self() == 0)
             {
@@ -3840,14 +3848,14 @@ scalar dynamicTopoFvMesh::edgeLengthScale
                 Foam::min
                 (
                     scale,
-                    ((distance / 3.0) - SMALL)/lengthEstimator().ratioMax()
+                    ((distance / 3.0) - SMALL) / estimator.ratioMax()
                 )
             );
         }
 
         // If curvature-based refinement is requested,
         // test the variation in face-normal directions.
-        if (lengthEstimator().isCurvaturePatch(edgePatch))
+        if (estimator.isCurvaturePatch(edgePatch))
         {
             // Obtain face-normals for both faces.
             label count = 0;
@@ -3867,8 +3875,8 @@ scalar dynamicTopoFvMesh::edgeLengthScale
                 }
             }
 
-            scalar deviation = (fNorm[0] & fNorm[1]);
-            scalar refDeviation = lengthEstimator().curvatureDeviation();
+            const scalar deviation = (fNorm[0] & fNorm[1]);
+            const scalar refDeviation = estimator.curvatureDeviation();
 
             if (mag(deviation) < refDeviation)
             {
@@ -3876,7 +3884,7 @@ scalar dynamicTopoFvMesh::edgeLengthScale
                 const edge& edgeToCheck = edges_[eIndex];
 
                 // Get the edge-length.
-                scalar length =
+                const scalar length =
                 (
                     linePointRef
                     (
@@ -3891,9 +3899,9 @@ scalar dynamicTopoFvMesh::edgeLengthScale
                         << "curvatureDeviation: " << refDeviation
                         << ", Edge: " << eIndex << ", Length: " << length
                         << ", Scale: " << scale << nl
-                        << " Half-length: " << (0.5*length) << nl
+                        << " Half-length: " << (0.5 * length) << nl
                         << " MinRatio: "
-                        << (lengthEstimator().ratioMin()*scale)
+                        << (estimator.ratioMin() * scale)
                         << endl;
                 }
 
@@ -3902,7 +3910,7 @@ scalar dynamicTopoFvMesh::edgeLengthScale
                     Foam::min
                     (
                         scale,
-                        ((length - SMALL)/lengthEstimator().ratioMax())
+                        ((length - SMALL) / estimator.ratioMax())
                     )
                 );
             }
@@ -3916,7 +3924,7 @@ scalar dynamicTopoFvMesh::edgeLengthScale
         }
 
         // Limit scales if necessary
-        lengthEstimator().limitScale(scale);
+        estimator.limitScale(scale);
     }
 
     return scale;

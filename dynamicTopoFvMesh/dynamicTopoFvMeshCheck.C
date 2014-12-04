@@ -260,10 +260,10 @@ dynamicTopoFvMesh::checkEdgeBoundary
             }
         }
 
-        // Check if the point belongs to a boundary layer zone
-        forAll(blZones_, zoneI)
+        // Check if the point belongs to a zone that disallows modifications
+        forAll(noModificationZones_, zoneI)
         {
-            const label zoneID = blZones_[zoneI];
+            const label zoneID = noModificationZones_[zoneI];
 
             if (pIndex < nOldPoints_)
             {
