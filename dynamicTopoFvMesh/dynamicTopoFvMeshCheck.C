@@ -55,14 +55,16 @@ bool dynamicTopoFvMesh::meshQuality
 )
 {
     // Compute statistics on the fly
-    label nCells = 0, minCell = -1;
     scalar maxQuality = -GREAT;
-    scalar minQuality =  GREAT;
+    scalar minQuality = +GREAT;
+    label nCells = 0, minCell = -1;
     scalar cQuality, meanQuality = 0.0;
 
     // Track slivers
     bool sliversAbsent = true;
     thresholdSlivers_.clear();
+
+    const label typicalCell = is2D() ? 5 : 4;
 
     // Loop through all cells in the mesh and compute cell quality
     forAll(cells_, cellI)
@@ -74,8 +76,8 @@ bool dynamicTopoFvMesh::meshQuality
             continue;
         }
 
-        // Skip hexahedral cells
-        if (cellToCheck.size() == 6)
+        // Skip non-typical cells
+        if (cellToCheck.size() != typicalCell)
         {
             cQuality = 1.0;
             meanQuality += cQuality;
