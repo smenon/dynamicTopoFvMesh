@@ -1111,6 +1111,8 @@ scalar dynamicTopoFvMesh::reportInterval() const
 // Check the state of connectivity lists
 void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 {
+    typedef DynamicList<label> DynamicLabelList;
+
     label nFailedChecks = 0;
 
     messageStream ConnectivityWarning
@@ -1514,7 +1516,7 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
     }
 
     label nInternalEdges = 0;
-    DynamicList<label> bPatchIDs(10);
+    DynamicLabelList bPatchIDs(10);
     labelList patchInfo(boundaryMesh().size(), 0);
 
     forAll(edgeFaces_, edgeI)
@@ -1821,11 +1823,12 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
     Pout<< "Checking cell-point connectivity...";
 
-    // Loop through all cells and construct cell-to-node
+    // Loop through all cells and construct calculate the Euler formula
     label cIndex = 0;
     label allCells = cells_.size();
     labelList cellIndex(allCells);
-    List<labelHashSet> cellToNode(allCells);
+    List<DynamicLabelList> cellToNode(allCells);
+    List<DynamicLabelList> cellToEdge(allCells);
 
     forAll(cells_, cellI)
     {
@@ -1838,22 +1841,35 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
 
         cellIndex[cIndex] = cellI;
 
+        DynamicLabelList& cellNodes = cellToNode[cIndex];
+        DynamicLabelList& cellEdges = cellToEdge[cIndex];
+
+        cellNodes.reserve(8);
+        cellEdges.reserve(12);
+
         forAll(thisCell, faceI)
         {
-            const labelList& fEdges = faceEdges_[thisCell[faceI]];
+            const label fIndex = thisCell[faceI];
+            const labelList& fEdges = faceEdges_[fIndex];
 
             forAll(fEdges, edgeI)
             {
-                const edge& thisEdge = edges_[fEdges[edgeI]];
+                const label eIndex = fEdges[edgeI];
+                const edge& thisEdge = edges_[eIndex];
 
-                if (!cellToNode[cIndex].found(thisEdge[0]))
+                if (eIndex > -1 && findIndex(cellEdges, eIndex) == -1)
                 {
-                    cellToNode[cIndex].insert(thisEdge[0]);
+                    cellEdges.append(eIndex);
                 }
 
-                if (!cellToNode[cIndex].found(thisEdge[1]))
+                forAll(thisEdge, pointI)
                 {
-                    cellToNode[cIndex].insert(thisEdge[1]);
+                    const label pIndex = thisEdge[pointI];
+
+                    if (pIndex > -1 && findIndex(cellNodes, pIndex) == -1)
+                    {
+                        cellNodes.append(pIndex);
+                    }
                 }
             }
         }
@@ -1864,52 +1880,52 @@ void dynamicTopoFvMesh::checkConnectivity(const label maxErrors) const
     // Resize the lists
     cellIndex.setSize(cIndex);
     cellToNode.setSize(cIndex);
+    cellToEdge.setSize(cIndex);
 
-    // Preliminary check for size
-    forAll(cellToNode, cellI)
+    // Preliminary check for Euler formula
+    forAll(cellIndex, cellI)
     {
-        // Check for hexahedral cells
-        if
-        (
-            (cellToNode[cellI].size() == 8) &&
-            (cells_[cellIndex[cellI]].size() == 6)
-        )
+        const label checkIndex = cellIndex[cellI];
+        const cell& checkCell = cells_[checkIndex];
+        const DynamicLabelList& cellNodes = cellToNode[cellI];
+        const DynamicLabelList& cellEdges = cellToEdge[cellI];
+
+        // According to the Euler formula:
+        // For any polyhedron: F + V - E == 2
+        // where,
+        //  - F: Number of cell faces
+        //  - V: Number of cell vertices
+        //  - E: Number of cell edges
+        const label F = checkCell.size();
+        const label V = cellNodes.size();
+        const label E = cellEdges.size();
+
+        if ((F + V - E) == 2)
         {
             continue;
         }
 
-        if
-        (
-            (cellToNode[cellI].size() != 6 && is2D()) ||
-            (cellToNode[cellI].size() != 4 && is3D())
-        )
+        Pout<< nl << "Warning: Cell: " << checkIndex
+            << " is inconsistent. " << endl;
+
+        Pout<< "Cell faces: " << checkCell << endl;
+
+        forAll(checkCell, faceI)
         {
-            Pout<< nl << "Warning: Cell: "
-                << cellIndex[cellI] << " is inconsistent. "
-                << endl;
+            const label fIndex = checkCell[faceI];
+            const labelList& fEdges = faceEdges_[fIndex];
 
-            const cell& failedCell = cells_[cellIndex[cellI]];
+            Pout<< "\tFace: " << fIndex << " :: " << faces_[fIndex] << endl;
 
-            Pout<< "Cell faces: " << failedCell << endl;
-
-            forAll(failedCell, faceI)
+            forAll(fEdges, edgeI)
             {
-                Pout<< "\tFace: " << failedCell[faceI]
-                    << " :: " << faces_[failedCell[faceI]]
+                Pout<< "\t\tEdge: " << fEdges[edgeI]
+                    << " :: " << edges_[fEdges[edgeI]]
                     << endl;
-
-                const labelList& fEdges = faceEdges_[failedCell[faceI]];
-
-                forAll(fEdges, edgeI)
-                {
-                    Pout<< "\t\tEdge: " << fEdges[edgeI]
-                        << " :: " << edges_[fEdges[edgeI]]
-                        << endl;
-                }
             }
-
-            nFailedChecks++;
         }
+
+        nFailedChecks++;
     }
 
     Pout<< "Done." << endl;
