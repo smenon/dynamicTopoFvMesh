@@ -44,6 +44,7 @@ SourceFiles
 
 #include "Map.H"
 #include "label.H"
+#include "Random.H"
 #include "edgeList.H"
 #include "faceList.H"
 #include "cellList.H"
@@ -93,6 +94,7 @@ protected:
         mutable labelList parents_;
 
         //- Internal data members
+        mutable Random random_;
         mutable vector refNorm_;
         mutable vector refCentre_;
         mutable treeBoundBox box_;

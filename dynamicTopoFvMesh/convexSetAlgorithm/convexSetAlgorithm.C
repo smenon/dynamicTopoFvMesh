@@ -75,7 +75,8 @@ convexSetAlgorithm::convexSetAlgorithm
     newFaces_(newFaces),
     newCells_(newCells),
     newOwner_(newOwner),
-    newNeighbour_(newNeighbour)
+    newNeighbour_(newNeighbour),
+    random_(std::time(0))
 {}
 
 

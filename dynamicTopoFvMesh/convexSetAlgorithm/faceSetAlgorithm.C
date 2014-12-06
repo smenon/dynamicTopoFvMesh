@@ -80,7 +80,7 @@ faceSetAlgorithm::faceSetAlgorithm
     searchTree_
     (
         mappingTreeData(candidatePoints_),
-        treeBoundBox(candidatePoints_),
+        treeBoundBox(candidatePoints_).extend(random_, 0.001),
         8, 10.0, 5.0
     )
 {}

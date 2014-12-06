@@ -74,7 +74,7 @@ cellSetAlgorithm::cellSetAlgorithm
     searchTree_
     (
         mappingTreeData(mesh.cellCentres()),
-        treeBoundBox(mesh.cellCentres()),
+        treeBoundBox(mesh.cellCentres()).extend(random_, 0.001),
         8, 10.0, 5.0
     )
 {}
