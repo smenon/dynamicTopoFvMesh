@@ -10171,13 +10171,15 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
         {
             // Processor is adjacent to physical patch types.
             // Search for boundary faces, and average their scale
+            const lengthScaleEstimator& estimator = lengthEstimator();
 
             // First check the master processor
             label nBoundary = 0;
 
             forAll(eFaces, faceI)
             {
-                label facePatch = whichPatch(eFaces[faceI]);
+                const label fIndex = eFaces[faceI];
+                const label facePatch = whichPatch(fIndex);
 
                 // Skip internal faces
                 if (facePatch == -1)
@@ -10192,21 +10194,31 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
                 }
 
                 // If this is a floating face, pick the owner length-scale
-                if (lengthEstimator().isFreePatch(facePatch))
+                if (estimator.isFreePatch(facePatch))
                 {
-                    procScale += lengthScale_[owner_[eFaces[faceI]]];
+                    procScale += lengthScale_[owner_[fIndex]];
                 }
                 else
                 {
                     // Fetch fixed length-scale
-                    procScale +=
+                    scalar fScale =
                     (
-                        lengthEstimator().fixedLengthScale
+                        estimator.fixedLengthScale
                         (
-                            eFaces[faceI],
+                            fIndex,
                             facePatch
                         )
                     );
+
+                    // Check for an invalid length scale
+                    if (mag(fScale) < VSMALL)
+                    {
+                        procScale += lengthScale_[owner_[fIndex]];
+                    }
+                    else
+                    {
+                        procScale += fScale;
+                    }
                 }
 
                 nBoundary++;
@@ -10228,7 +10240,8 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
                     forAll(peFaces, faceI)
                     {
-                        label facePatch = mesh.whichPatch(peFaces[faceI]);
+                        const label fIndex = peFaces[faceI];
+                        const label facePatch = mesh.whichPatch(fIndex);
 
                         // Skip internal faces
                         if (facePatch == -1)
@@ -10244,24 +10257,37 @@ scalar dynamicTopoFvMesh::processorLengthScale(const label index) const
 
                         // If this is a floating face,
                         // pick the owner length-scale
-                        if (lengthEstimator().isFreePatch(facePatch))
+                        if (estimator.isFreePatch(facePatch))
                         {
                             procScale +=
                             (
-                                mesh.lengthScale_[mesh.owner_[peFaces[faceI]]]
+                                mesh.lengthScale_[mesh.owner_[fIndex]]
                             );
                         }
                         else
                         {
                             // Fetch fixed length-scale
-                            procScale +=
+                            scalar fScale =
                             (
-                                lengthEstimator().fixedLengthScale
+                                estimator.fixedLengthScale
                                 (
-                                    peFaces[faceI],
+                                    fIndex,
                                     facePatch
                                 )
                             );
+
+                            // Check for an invalid length scale
+                            if (mag(fScale) < VSMALL)
+                            {
+                                procScale +=
+                                (
+                                    mesh.lengthScale_[mesh.owner_[fIndex]]
+                                );
+                            }
+                            else
+                            {
+                                procScale += fScale;
+                            }
                         }
 
                         nBoundary++;
