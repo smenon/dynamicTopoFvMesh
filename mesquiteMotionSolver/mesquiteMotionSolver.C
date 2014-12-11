@@ -1679,13 +1679,13 @@ void mesquiteMotionSolver::initArrays()
 
     forAll(boundary, patchI)
     {
-        const labelList& meshPointLabels = boundary[patchI].meshPoints();
-
         // Leave processor boundaries out.
-        if (boundary[patchI].type() == "processor")
+        if (isA<processorPolyPatch>(boundary[patchI]))
         {
             continue;
         }
+
+        const labelList& meshPointLabels = boundary[patchI].meshPoints();
 
         forAll(meshPointLabels, pointI)
         {
@@ -1696,10 +1696,9 @@ void mesquiteMotionSolver::initArrays()
     // Fix points on decomposed boundary faces
     forAll(decompFaceCentres_, indexI)
     {
-        label fIndex = decompFaceCentres_[indexI].first();
-        label pIndex = decompFaceCentres_[indexI].second();
-
-        label patchI = boundary.whichPatch(fIndex);
+        const label fIndex = decompFaceCentres_[indexI].first();
+        const label pIndex = decompFaceCentres_[indexI].second();
+        const label patchI = boundary.whichPatch(fIndex);
 
         if (patchI < 0)
         {
@@ -1707,7 +1706,7 @@ void mesquiteMotionSolver::initArrays()
         }
 
         // Leave processor boundaries out.
-        if (boundary[patchI].type() == "processor")
+        if (isA<processorPolyPatch>(boundary[patchI]))
         {
             continue;
         }
@@ -2407,9 +2406,12 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
         Info<< "Initializing parallel connectivity for Mesquite" << endl;
     }
 
+    typedef DynamicList<label> DynamicLabelList;
+
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
     Map<label> nPrc;
+    List<DynamicLabelList> procDecompFaces(boundary.size());
 
     // Build a list of nearest neighbours.
     forAll(boundary, patchI)
@@ -2422,7 +2424,22 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
             );
 
             nPrc.insert(pp.neighbProcNo(), patchI);
+            procDecompFaces[patchI].reserve(pp.size());
         }
+    }
+
+    // Distribute face centres to respective processor patches
+    forAll(decompFaceCentres_, indexI)
+    {
+        const label fIndex = decompFaceCentres_[indexI].first();
+        const label patchI = boundary.whichPatch(fIndex);
+
+        if (patchI < 0 || !isA<processorPolyPatch>(boundary[patchI]))
+        {
+            continue;
+        }
+
+        procDecompFaces[patchI].append(indexI);
     }
 
     // Auxiliary cellToNode addressing sizes
@@ -2440,93 +2457,53 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
     sendPointBuffer_.setSize(procIndices_.size());
     recvPointBuffer_.setSize(procIndices_.size());
 
-    // Make a rough estimate for cellToNode
-    Map<label> addedCells;
-    DynamicList<label> myCellToNode(50);
+    // Prepare cellToNode / cellTypes for transfer
+    labelList revCellMap;
+    Map<label> fwdCellMap;
     labelList nSharedPoints(procIndices_.size(), 0);
-    List<labelList> myFixFlags(procIndices_.size());
-    List<labelList> neiFixFlags(procIndices_.size());
-    List<labelList> neiTypes(procIndices_.size());
-    List<DynamicList<label> > myTypes(procIndices_.size());
+    labelListList sendFixFlags(procIndices_.size());
+    labelListList recvFixFlags(procIndices_.size());
+    labelListList recvTypes(procIndices_.size());
+    labelListList sendTypes(procIndices_.size());
 
-    const dictionary& optionsDict = subDict("mesquiteOptions");
-
-    // Construct shape recognizers
-    FixedList<autoPtr<cellMatcher>, 4> matcher;
-    FixedList<Mesquite::EntityTopology, 4> cellType;
-
-    // Set types
-    bool standardTypes = false;
-
-    if (optionsDict.found("standardCellTypes"))
-    {
-        standardTypes = readBool(optionsDict.lookup("standardCellTypes"));
-    }
-
-    if (standardTypes)
-    {
-        matcher[0].set(new tetMatcher());
-        cellType[0] = Mesquite::TETRAHEDRON;
-
-        matcher[1].set(new hexMatcher());
-        cellType[1] = Mesquite::HEXAHEDRON;
-
-        matcher[2].set(new pyrMatcher());
-        cellType[2] = Mesquite::PYRAMID;
-
-        matcher[3].set(new prismMatcher());
-        cellType[3] = Mesquite::PRISM;
-    }
-    else
-    {
-        // No standard types.
-        // Default to tetrahedra, and decompose the rest.
-        matcher[0].set(new tetMatcher());
-        cellType[0] = Mesquite::TETRAHEDRON;
-
-        matcher[1].set(NULL);
-        matcher[2].set(NULL);
-        matcher[3].set(NULL);
-    }
-
-    const cellList& cells = mesh().cells();
-    const faceList& faces = mesh().faces();
-    const labelList& owner = mesh().faceOwner();
-    const labelListList& pointCells = mesh().pointCells();
+    // Fetch demand-driven data
+    const labelList& typeMap = cellTypeMap();
+    const labelList& cellOffsets = cellOffset();
+    const labelListList& pointCellList = pointCells();
 
     forAll(procIndices_, pI)
     {
         label proc = procIndices_[pI];
 
+        const label invalidProcPatch = -2;
         const labelList& procPoints = procPointLabels_[pI];
 
         // Add all points / cells connected to procPoints
-        label nProcPoints = 0, nProcCells = 0;
+        label nProcPoints = 0, nProcCells = 0, procPatch = invalidProcPatch;
 
         // Determine addressing for all shared points.
         if (nPrc.found(proc))
         {
+            // Note index for later
+            procPatch = nPrc[proc];
+
             // Fetch addressing for this patch.
             const processorPolyPatch& pp =
             (
-                refCast<const processorPolyPatch>(boundary[nPrc[proc]])
+                refCast<const processorPolyPatch>(boundary[procPatch])
             );
 
             const labelList& neiPoints = pp.neighbPoints();
 
             forAll(procPoints, pointI)
             {
-                recvPointMap_[pI].insert
-                (
-                    neiPoints[pointI],
-                    procPoints[pointI]
-                );
+                const label pIndex = procPoints[pointI];
+                const label nIndex = neiPoints[pointI];
 
-                sendPointMap_[pI].insert
-                (
-                    procPoints[pointI],
-                    nProcPoints++
-                );
+                recvPointMap_[pI].insert(nIndex, pIndex);
+                sendPointMap_[pI].insert(pIndex, nProcPoints);
+
+                nProcPoints++;
             }
         }
 
@@ -2538,116 +2515,118 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
 
         forAll(pLabels, pointI)
         {
-            recvPointMap_[pI].insert
-            (
-                nProcPoints,
-                pLabels[pointI].first()
-            );
+            const label pIndex = pLabels[pointI].first();
 
-            sendPointMap_[pI].insert
-            (
-                pLabels[pointI].first(),
-                nProcPoints
-            );
+            recvPointMap_[pI].insert(nProcPoints, pIndex);
+            sendPointMap_[pI].insert(pIndex, nProcPoints);
 
             nProcPoints++;
+        }
+
+        // Add decomposition face points
+        if (procPatch != invalidProcPatch)
+        {
+            DynamicLabelList& procFaces = procDecompFaces[procPatch];
+
+            forAll(procFaces, faceI)
+            {
+                const label indexI = procFaces[faceI];
+                const label pIndex = decompFaceCentres_[indexI].second();
+
+                recvPointMap_[pI].insert(nProcPoints, pIndex);
+                sendPointMap_[pI].insert(pIndex, nProcPoints);
+
+                nProcPoints++;
+            }
+
+            // Clear after use
+            procFaces.clearStorage();
         }
 
         // Make a note of shared point size
         nSharedPoints[pI] = nProcPoints;
 
-        // Initialize type sizes
-        FixedList<label, 4> nTypes(0);
-
-        // Set an initial capacity for cell types
-        myTypes[pI].setCapacity(50);
-
         // Fetch the list of shared processor points
         const labelList sharedPoints = sendPointMap_[pI].toc();
 
+        // Estimate size for cellToNode and cell types
+        label nCellToNode = 0;
+
         forAll(sharedPoints, pointI)
         {
-            const labelList& pCells = pointCells[sharedPoints[pointI]];
+            const labelList& pCells = pointCellList[sharedPoints[pointI]];
 
             forAll(pCells, cellI)
             {
-                if (addedCells.found(pCells[cellI]))
+                const label cIndex = pCells[cellI];
+
+                if (fwdCellMap.found(cIndex))
                 {
                     continue;
                 }
 
-                bool foundMatch = false;
+                // Fetch cellToNode for this cell
+                const label offset = cellOffsets[cIndex];
+                const label cellType = mixedTypes_[cIndex];
+                const label nCellNodes = typeMap[cellType];
 
-                forAll(matcher, indexI)
+                // Update counter
+                nCellToNode += nCellNodes;
+
+                // Update point map
+                for (label nodeI = 0; nodeI < nCellNodes; nodeI++)
                 {
-                    if
-                    (
-                        matcher[indexI].valid() &&
-                        matcher[indexI]->isA(mesh(), pCells[cellI])
-                    )
+                    const label pIndex = cellToNode_[offset + nodeI];
+
+                    // Add discovered points to map
+                    if (sendPointMap_[pI].found(pIndex))
                     {
-                        // Match shape
-                        matcher[indexI]->matchShape
-                        (
-                            false,
-                            faces,
-                            owner,
-                            pCells[cellI],
-                            cells[pCells[cellI]]
-                        );
-
-                        // Increment count
-                        nTypes[indexI]++;
-
-                        // Assign cell type
-                        myTypes[pI].append(cellType[indexI]);
-
-                        // Set cellToNode
-                        const labelList& ctn = matcher[indexI]->vertLabels();
-
-                        // Prepare maps for all new points
-                        // and fill in cellToNode.
-                        forAll(ctn, i)
-                        {
-                            // Add discovered points to map
-                            if (!sendPointMap_[pI].found(ctn[i]))
-                            {
-                                sendPointMap_[pI].insert
-                                (
-                                    ctn[i],
-                                    nProcPoints++
-                                );
-                            }
-
-                            // Assign cellToNode
-                            myCellToNode.append(sendPointMap_[pI][ctn[i]]);
-                        }
-
-                        foundMatch = true;
-                        break;
+                        continue;
                     }
+
+                    sendPointMap_[pI].insert(pIndex, nProcPoints++);
                 }
 
-                // Add to list
-                addedCells.insert(pCells[cellI], nProcCells++);
-
-                if (!foundMatch)
-                {
-                    Pout<< " Unknown type for cell: " << pCells[cellI]
-                        << " :: " << cells[pCells[cellI]]
-                        << abort(FatalError);
-                }
+                // Add cell to list
+                fwdCellMap.insert(cIndex, nProcCells++);
             }
         }
 
-        // Estimate size for cellToNode
-        label nCellToNode =
-        (
-            (4 * nTypes[0])
-          + (8 * nTypes[1])
-          + (5 * nTypes[2])
-          + (6 * nTypes[3])
-        );
+        // Invert the forward cell map
+        revCellMap.setSize(nProcCells);
+
+        forAllConstIter(Map<label>, fwdCellMap, cIter)
+        {
+            revCellMap[cIter()] = cIter.key();
+        }
+
+        // Populate cellToNode and cell types
+        labelList& myTypes = sendTypes[pI];
+        labelList& myCellToNode = sendCellToNode_[pI];
+
+        myTypes.setSize(nProcCells);
+        myCellToNode.setSize(nCellToNode);
+
+        nCellToNode = 0;
+
+        for (label cellI = 0; cellI < nProcCells; cellI++)
+        {
+            const label cIndex = revCellMap[cellI];
+
+            // Fetch cellToNode for this cell
+            const label offset = cellOffsets[cIndex];
+            const label cellType = mixedTypes_[cIndex];
+            const label nCellNodes = typeMap[cellType];
+
+            for (label nodeI = 0; nodeI < nCellNodes; nodeI++)
+            {
+                const label pIndex = cellToNode_[offset + nodeI];
+
+                myCellToNode[nCellToNode++] = sendPointMap_[pI][pIndex];
+            }
+
+            myTypes[cellI] = cellType;
+        }
 
         // Transfer entity sizes
         parWrite(proc, nCellToNode);
@@ -2661,25 +2640,23 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
             sendPointBuffer_[pI].setSize(nProcPoints, vector::zero);
 
             // Assign fixFlags and send to neighbour
-            myFixFlags[pI].setSize(nProcPoints, -1);
+            labelList& myFixFlags = sendFixFlags[pI];
+
+            myFixFlags.setSize(nProcPoints, -1);
 
             forAllConstIter(Map<label>, sendPointMap_[pI], pIter)
             {
-                myFixFlags[pI][pIter()] = fixFlags_[pIter.key()];
+                myFixFlags[pIter()] = fixFlags_[pIter.key()];
             }
 
-            parWrite(proc, myFixFlags[pI]);
+            parWrite(proc, myFixFlags);
         }
 
         if (nProcCells)
         {
             // Send cell types to neighbour
-            parWrite(proc, myTypes[pI]);
-
-            // Copy cellToNode before transfer
-            sendCellToNode_[pI] = myCellToNode;
-
-            parWrite(proc, sendCellToNode_[pI]);
+            parWrite(proc, myTypes);
+            parWrite(proc, myCellToNode);
         }
 
         parRead(proc, nAuxCellToNode[pI]);
@@ -2693,17 +2670,17 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
             recvPointBuffer_[pI].setSize(nAuxPoints_[pI], vector::zero);
 
             // Receive fix-flags from neighbour
-            neiFixFlags[pI].setSize(nAuxPoints_[pI], -1);
+            recvFixFlags[pI].setSize(nAuxPoints_[pI], -1);
 
-            parRead(proc, neiFixFlags[pI]);
+            parRead(proc, recvFixFlags[pI]);
         }
 
         if (nAuxCells_[pI])
         {
             // Receive cell-types from neighbour
-            neiTypes[pI].setSize(nAuxCells_[pI]);
+            recvTypes[pI].setSize(nAuxCells_[pI]);
 
-            parRead(proc, neiTypes[pI]);
+            parRead(proc, recvTypes[pI]);
 
             // Receive cellToNode from neighbour
             recvCellToNode_[pI].setSize(nAuxCellToNode[pI]);
@@ -2711,18 +2688,26 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
             parRead(proc, recvCellToNode_[pI]);
         }
 
-        // Clear cellToNode for next processor
-        addedCells.clear();
-        myCellToNode.clear();
+        // Clear cellMaps for next processor
+        fwdCellMap.clear();
+        revCellMap.clear();
     }
+
+    // Clear out demand-driven data
+    pointCells_.clear();
+    cellOffset_.clear();
 
     // Wait for transfers to complete
     OPstream::waitRequests();
     IPstream::waitRequests();
 
     // Prepare new arrays for mesquite
-    label nCellToNode = cellToNode_.size();
-    label pIndex = nPoints_, cIndex = nCellToNode, cellIndex = nCells_;
+    const label nCellToNode = cellToNode_.size();
+
+    // Initialize counters
+    label cellIndex = nCells_;
+    label cIndex = nCellToNode;
+    label pIndex = nPoints_ + nDecompPoints_;
 
     // Count the number of extra entities
     label nExtraPoints = 0, nExtraCells = 0, nExtraCellToNode = 0;
@@ -2771,30 +2756,37 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
         const labelList& ctn = recvCellToNode_[pI];
 
         // Configure points
+        label ptIndex = 0;
+
         forAll(ctn, pointI)
         {
             // Add discovered points to map
-            if (!recvPointMap_[pI].found(ctn[pointI]))
+            const label recvIndex = ctn[pointI];
+
+            Map<label>::const_iterator it = recvPointMap_[pI].find(recvIndex);
+
+            if (it == recvPointMap_[pI].end())
             {
-                recvPointMap_[pI].insert
-                (
-                    ctn[pointI],
-                    pIndex
-                );
+                recvPointMap_[pI].insert(recvIndex, pIndex);
 
                 // Hold all new points as fixed.
                 fixFlags_[pIndex] = 1;
 
                 // Incremement point count
-                pIndex++;
+                ptIndex = pIndex++;
+            }
+            else
+            {
+                // Pick mapped value
+                ptIndex = it();
             }
 
             // Assign cellToNode
-            cellToNode_[cIndex++] = recvPointMap_[pI][ctn[pointI]];
+            cellToNode_[cIndex++] = ptIndex;
         }
 
         // Configure neighbour fixFlags
-        const labelList& neiFlags = neiFixFlags[pI];
+        const labelList& neiFlags = recvFixFlags[pI];
 
         forAllConstIter(Map<label>, recvPointMap_[pI], pIter)
         {
@@ -2804,7 +2796,7 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
         }
 
         // Assign cell types from neighbour
-        const labelList& cellTypes = neiTypes[pI];
+        const labelList& cellTypes = recvTypes[pI];
 
         forAll(cellTypes, cellI)
         {
@@ -3013,6 +3005,200 @@ void mesquiteMotionSolver::initFixedZones()
 }
 
 
+// Compute and return cell typeMap
+labelList mesquiteMotionSolver::cellTypeMap() const
+{
+    // Define a map for supported types
+    const label types[][2] =
+    {
+        { Mesquite::TETRAHEDRON, 4 },
+        { Mesquite::HEXAHEDRON, 8 },
+        { Mesquite::PYRAMID, 5 },
+        { Mesquite::PRISM, 6 }
+    };
+
+    // Allocate the type map
+    label maxSize = 0;
+    label nTypes(sizeof(types) / sizeof(types[0]));
+
+    for (label i = 0; i < nTypes; i++)
+    {
+        maxSize = Foam::max(types[i][0], maxSize);
+    }
+
+    // Prepare the type map
+    labelList typeMap(maxSize + 1);
+
+    for (label i = 0; i < nTypes; i++)
+    {
+        typeMap[types[i][0]] = types[i][1];
+    }
+
+    return typeMap;
+}
+
+
+// Initialize pointCells addressing
+void mesquiteMotionSolver::initPointCells() const
+{
+    if (debug)
+    {
+        Info<< "void mesquiteMotionSolver::initPointCells() const : "
+            << "Calculating pointCells connectivity" << endl;
+    }
+
+    if (pointCells_.size() || cellOffset_.size())
+    {
+        FatalErrorIn
+        (
+            "void mesquiteMotionSolver::initPointCells() const"
+        )   << "pointCells connectivity already allocated."
+            << abort(FatalError);
+    }
+
+    const label nCells = nCells_;
+    const label nPoints = nPoints_ + nDecompPoints_;
+
+    // Count pointCells
+    label counter = 0;
+    labelList nPointCells(nPoints, 0);
+
+    // Allocate the lists
+    cellOffset_.setSize(nCells);
+    pointCells_.setSize(nPoints);
+
+    // Count cells per point
+    const labelList& typeMap = cellTypeMap();
+
+    for (label cellI = 0; cellI < nCells; ++cellI)
+    {
+        const label cellType = mixedTypes_[cellI];
+        const label nCellNodes = typeMap[cellType];
+
+        for (label nodeI = 0; nodeI < nCellNodes; nodeI++)
+        {
+            const unsigned long pIndex = cellToNode_[counter + nodeI];
+
+            nPointCells[pIndex]++;
+        }
+
+        cellOffset_[cellI] = counter;
+        counter += nCellNodes;
+    }
+
+    // Allocate for inidividual points
+    forAll(pointCells_, pointI)
+    {
+        pointCells_[pointI].setSize(nPointCells[pointI]);
+        nPointCells[pointI] = 0;
+    }
+
+    // Assign pointCells list
+    counter = 0;
+
+    for (label cellI = 0; cellI < nCells; ++cellI)
+    {
+        const label cellType = mixedTypes_[cellI];
+        const label nCellNodes = typeMap[cellType];
+
+        for (label nodeI = 0; nodeI < nCellNodes; nodeI++)
+        {
+            const unsigned long pIndex = cellToNode_[counter + nodeI];
+
+            pointCells_[pIndex][nPointCells[pIndex]++] = cellI;
+        }
+
+        counter += nCellNodes;
+    }
+}
+
+
+// Compute and return pointCells addressing
+const labelListList& mesquiteMotionSolver::pointCells() const
+{
+    if (pointCells_.empty())
+    {
+        initPointCells();
+    }
+
+    return pointCells_;
+}
+
+
+// Compute and return cellOffset addressing
+const labelList& mesquiteMotionSolver::cellOffset() const
+{
+    if (cellOffset_.empty())
+    {
+        initPointCells();
+    }
+
+    return cellOffset_;
+}
+
+
+// Dump current mesh for debugging
+void mesquiteMotionSolver::writeDecomposition() const
+{
+    labelListList cpList(nCells_);
+    vectorField mPoints(nPoints_ + nDecompPoints_);
+
+    forAll(mPoints, pointI)
+    {
+        mPoints[pointI][0] = vtxCoords_[(3 * pointI) + 0];
+        mPoints[pointI][1] = vtxCoords_[(3 * pointI) + 1];
+        mPoints[pointI][2] = vtxCoords_[(3 * pointI) + 2];
+    }
+
+    label cIndex = 0;
+
+    forAll(mixedTypes_, cellI)
+    {
+        label nnodes = -1;
+
+        switch (mixedTypes_[cellI])
+        {
+            case Mesquite::TETRAHEDRON:
+            {
+                nnodes = 4;
+                break;
+            }
+
+            default:
+            {
+                FatalErrorIn("void mesquiteMotionSolver::writeDecomposition()")
+                    << "Unknown type."
+                    << abort(FatalError);
+            }
+        }
+
+        cpList[cellI].setSize(nnodes);
+
+        forAll(cpList[cellI], nI)
+        {
+            cpList[cellI][nI] = cellToNode_[cIndex++];
+        }
+    }
+
+    // Write out the mesh
+    //    meshOps::writeVTK
+    //    (
+    //        mesh(),
+    //        "tetDecompMesh",
+    //        nPoints_ + nDecompPoints_,
+    //        nCells_,
+    //        cellToNode_.size(),
+    //        mPoints,
+    //        cpList,
+    //        3,
+    //        Map<label>(),
+    //        Map<label>(),
+    //        UList<scalar>(),
+    //        fixFlags_
+    //    );
+}
+
+
 // Private member function to construct parallel connectivity data
 void mesquiteMotionSolver::initParallelConnectivity()
 {
@@ -3063,17 +3249,17 @@ void mesquiteMotionSolver::computeCentroids
     fCtrs.setSize(mesh().nFaces(), vector::zero);
     cCtrs.setSize(mesh().nCells(), vector::zero);
 
+    const scalar oneThird = (1.0 / 3.0);
     const faceList& fs = mesh().faces();
 
     forAll(fs, faceI)
     {
         const face& f = fs[faceI];
-
-        label nPoints = f.size();
+        const label nPoints = f.size();
 
         if (nPoints == 3)
         {
-            fCtrs[faceI] = (1.0/3.0)*(p[f[0]] + p[f[1]] + p[f[2]]);
+            fCtrs[faceI] = oneThird * (p[f[0]] + p[f[1]] + p[f[2]]);
         }
         else
         {
@@ -3082,26 +3268,27 @@ void mesquiteMotionSolver::computeCentroids
 
             point fCentre = p[f[0]];
 
-            for (label pi = 1; pi < nPoints; pi++)
+            for (label pI = 1; pI < nPoints; pI++)
             {
-                fCentre += p[f[pi]];
+                fCentre += p[f[pI]];
             }
 
             fCentre /= nPoints;
 
-            for (label pi = 0; pi < nPoints; pi++)
+            for (label pI = nPoints - 1, pJ = 0; pJ < nPoints; pI = pJ++)
             {
-                const point& nextPoint = p[f[(pi + 1) % nPoints]];
+                const point& currPoint = p[f[pI]];
+                const point& nextPoint = p[f[pJ]];
 
-                vector c = p[f[pi]] + nextPoint + fCentre;
-                vector n = (nextPoint - p[f[pi]])^(fCentre - p[f[pi]]);
+                vector c = currPoint + nextPoint + fCentre;
+                vector n = (nextPoint - currPoint) ^ (fCentre - currPoint);
                 scalar a = mag(n);
 
                 sumA += a;
-                sumAc += a*c;
+                sumAc += a * c;
             }
 
-            fCtrs[faceI] = (1.0/3.0)*sumAc/(sumA + VSMALL);
+            fCtrs[faceI] = oneThird * sumAc / (sumA + VSMALL);
         }
     }
 
@@ -3133,8 +3320,9 @@ void mesquiteMotionSolver::computeCentroids
     forAll(own, faceI)
     {
         const face& f = fs[faceI];
+        const label nPoints = f.size();
 
-        if (f.size() == 3)
+        if (nPoints == 3)
         {
             tetPointRef tpr(p[f[2]], p[f[1]], p[f[0]], cEst[own[faceI]]);
 
@@ -3154,19 +3342,22 @@ void mesquiteMotionSolver::computeCentroids
             }
 
             // Accumulate volume-weighted tet centre
-            cCtrs[own[faceI]] += tetVol*tpr.centre();
+            cCtrs[own[faceI]] += tetVol * tpr.centre();
 
             // Accumulate tet volume
             cVols[own[faceI]] += tetVol;
         }
         else
         {
-            forAll(f, pI)
+            for (label pI = nPoints - 1, pJ = 0; pJ < nPoints; pI = pJ++)
             {
+                const point& currPoint = p[f[pI]];
+                const point& nextPoint = p[f[pJ]];
+
                 tetPointRef tpr
                 (
-                    p[f[pI]],
-                    p[f.prevLabel(pI)],
+                    nextPoint,
+                    currPoint,
                     fCtrs[faceI],
                     cEst[own[faceI]]
                 );
@@ -3187,7 +3378,7 @@ void mesquiteMotionSolver::computeCentroids
                 }
 
                 // Accumulate volume-weighted tet centre
-                cCtrs[own[faceI]] += tetVol*tpr.centre();
+                cCtrs[own[faceI]] += tetVol * tpr.centre();
 
                 // Accumulate tet volume
                 cVols[own[faceI]] += tetVol;
@@ -3198,8 +3389,9 @@ void mesquiteMotionSolver::computeCentroids
     forAll(nei, faceI)
     {
         const face& f = fs[faceI];
+        const label nPoints = f.size();
 
-        if (f.size() == 3)
+        if (nPoints == 3)
         {
             tetPointRef tpr(p[f[0]], p[f[1]], p[f[2]], cEst[nei[faceI]]);
 
@@ -3219,19 +3411,22 @@ void mesquiteMotionSolver::computeCentroids
             }
 
             // Accumulate volume-weighted tet centre
-            cCtrs[nei[faceI]] += tetVol*tpr.centre();
+            cCtrs[nei[faceI]] += tetVol * tpr.centre();
 
             // Accumulate tet volume
             cVols[nei[faceI]] += tetVol;
         }
         else
         {
-            forAll(f, pI)
+            for (label pI = nPoints - 1, pJ = 0; pJ < nPoints; pI = pJ++)
             {
+                const point& currPoint = p[f[pI]];
+                const point& nextPoint = p[f[pJ]];
+
                 tetPointRef tpr
                 (
-                    p[f[pI]],
-                    p[f.nextLabel(pI)],
+                    currPoint,
+                    nextPoint,
                     fCtrs[faceI],
                     cEst[nei[faceI]]
                 );
@@ -3252,7 +3447,7 @@ void mesquiteMotionSolver::computeCentroids
                 }
 
                 // Accumulate volume-weighted tet centre
-                cCtrs[nei[faceI]] += tetVol*tpr.centre();
+                cCtrs[nei[faceI]] += tetVol * tpr.centre();
 
                 // Accumulate tet volume
                 cVols[nei[faceI]] += tetVol;
@@ -3271,40 +3466,47 @@ void mesquiteMotionSolver::computeCentroids
 }
 
 
+// Apply centroid positions
+void mesquiteMotionSolver::applyCentroids()
+{
+    // Compute up-to-date centroids
+    vectorField xF, xC;
+
+    computeCentroids(refPoints_, xF, xC);
+
+    // Copy points from decomposition
+    forAll(decompCellCentres_, indexI)
+    {
+        label cIndex = decompCellCentres_[indexI].first();
+        label pIndex = decompCellCentres_[indexI].second();
+
+        const vector& v = xC[cIndex];
+
+        vtxCoords_[(3 * pIndex) + 0] = v.x();
+        vtxCoords_[(3 * pIndex) + 1] = v.y();
+        vtxCoords_[(3 * pIndex) + 2] = v.z();
+    }
+
+    forAll(decompFaceCentres_, indexI)
+    {
+        label fIndex = decompFaceCentres_[indexI].first();
+        label pIndex = decompFaceCentres_[indexI].second();
+
+        const vector& v = xF[fIndex];
+
+        vtxCoords_[(3 * pIndex) + 0] = v.x();
+        vtxCoords_[(3 * pIndex) + 1] = v.y();
+        vtxCoords_[(3 * pIndex) + 2] = v.z();
+    }
+}
+
+
 // Copy auxiliary points to/from buffers
 void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
 {
     if (firstCopy && nDecompPoints_)
     {
-        // Compute up-to-date centroids
-        vectorField xF, xC;
-
-        computeCentroids(refPoints_, xF, xC);
-
-        // Copy points from decomposition
-        forAll(decompCellCentres_, indexI)
-        {
-            label cIndex = decompCellCentres_[indexI].first();
-            label pIndex = decompCellCentres_[indexI].second();
-
-            const vector& v = xC[cIndex];
-
-            vtxCoords_[(3*pIndex)+0] = v.x();
-            vtxCoords_[(3*pIndex)+1] = v.y();
-            vtxCoords_[(3*pIndex)+2] = v.z();
-        }
-
-        forAll(decompFaceCentres_, indexI)
-        {
-            label fIndex = decompFaceCentres_[indexI].first();
-            label pIndex = decompFaceCentres_[indexI].second();
-
-            const vector& v = xF[fIndex];
-
-            vtxCoords_[(3*pIndex)+0] = v.x();
-            vtxCoords_[(3*pIndex)+1] = v.y();
-            vtxCoords_[(3*pIndex)+2] = v.z();
-        }
+        applyCentroids();
     }
 
     if (!Pstream::parRun())
@@ -3332,9 +3534,9 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
             {
                 pIndex = pIter.key();
 
-                v.x() = vtxCoords_[(3*pIndex)+0];
-                v.y() = vtxCoords_[(3*pIndex)+1];
-                v.z() = vtxCoords_[(3*pIndex)+2];
+                v.x() = vtxCoords_[(3 * pIndex) + 0];
+                v.y() = vtxCoords_[(3 * pIndex) + 1];
+                v.z() = vtxCoords_[(3 * pIndex) + 2];
 
                 psField[pIter()] = v;
             }
@@ -3375,9 +3577,9 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
 
                 v = prField[pIter.key()];
 
-                vtxCoords_[(3*pIndex)+0] = v.x();
-                vtxCoords_[(3*pIndex)+1] = v.y();
-                vtxCoords_[(3*pIndex)+2] = v.z();
+                vtxCoords_[(3 * pIndex) + 0] = v.x();
+                vtxCoords_[(3 * pIndex) + 1] = v.y();
+                vtxCoords_[(3 * pIndex) + 2] = v.z();
             }
         }
     }
@@ -3403,9 +3605,9 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
 
                 vector& v = prField[pIter.key()];
 
-                v.x() = vtxCoords_[(3*pIndex)+0];
-                v.y() = vtxCoords_[(3*pIndex)+1];
-                v.z() = vtxCoords_[(3*pIndex)+2];
+                v.x() = vtxCoords_[(3 * pIndex) + 0];
+                v.y() = vtxCoords_[(3 * pIndex) + 1];
+                v.z() = vtxCoords_[(3 * pIndex) + 2];
             }
 
             if (debug)
@@ -3454,9 +3656,9 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
                     v = psField[pIter()];
 
                     // Accumulate positions
-                    vtxCoords_[(3*pIndex)+0] += v.x();
-                    vtxCoords_[(3*pIndex)+1] += v.y();
-                    vtxCoords_[(3*pIndex)+2] += v.z();
+                    vtxCoords_[(3 * pIndex) + 0] += v.x();
+                    vtxCoords_[(3 * pIndex) + 1] += v.y();
+                    vtxCoords_[(3 * pIndex) + 2] += v.z();
                 }
             }
         }
@@ -3467,9 +3669,9 @@ void mesquiteMotionSolver::copyAuxiliaryPoints(bool firstCopy)
         {
             scalar fract = pointFractions_[pointI];
 
-            vtxCoords_[(3*pointI)+0] *= fract;
-            vtxCoords_[(3*pointI)+1] *= fract;
-            vtxCoords_[(3*pointI)+2] *= fract;
+            vtxCoords_[(3 * pointI) + 0] *= fract;
+            vtxCoords_[(3 * pointI) + 1] *= fract;
+            vtxCoords_[(3 * pointI) + 2] *= fract;
         }
     }
 }
@@ -4960,9 +5162,9 @@ void mesquiteMotionSolver::solve()
     // Copy most recent point positions
     forAll(refPoints_, pointI)
     {
-        vtxCoords_[(3*pointI)+0] = refPoints_[pointI][0];
-        vtxCoords_[(3*pointI)+1] = refPoints_[pointI][1];
-        vtxCoords_[(3*pointI)+2] = refPoints_[pointI][2];
+        vtxCoords_[(3 * pointI) + 0] = refPoints_[pointI][0];
+        vtxCoords_[(3 * pointI) + 1] = refPoints_[pointI][1];
+        vtxCoords_[(3 * pointI) + 2] = refPoints_[pointI][2];
     }
 
     // Copy auxiliary points
@@ -5038,9 +5240,9 @@ void mesquiteMotionSolver::solve()
     // Copy updated positions
     forAll(refPoints_, pointI)
     {
-        refPoints_[pointI][0] = vtxCoords_[(3*pointI)+0];
-        refPoints_[pointI][1] = vtxCoords_[(3*pointI)+1];
-        refPoints_[pointI][2] = vtxCoords_[(3*pointI)+2];
+        refPoints_[pointI][0] = vtxCoords_[(3 * pointI) + 0];
+        refPoints_[pointI][1] = vtxCoords_[(3 * pointI) + 1];
+        refPoints_[pointI][2] = vtxCoords_[(3 * pointI) + 2];
 
         // Relax points
         refPoints_[pointI] =
@@ -5224,6 +5426,8 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
     cellToNode_.clear();
     fixFlags_.clear();
     mixedTypes_.clear();
+    pointCells_.clear();
+    cellOffset_.clear();
 
     // Reset flag
     arraysInitialized_ = false;

@@ -155,6 +155,12 @@ class mesquiteMotionSolver
         //- Array with element types
         mutable List<Mesquite::EntityTopology> mixedTypes_;
 
+        //- Demand-driven pointCells addressing
+        mutable labelListList pointCells_;
+
+        //- Demand-drive cell offset addressing
+        mutable labelList cellOffset_;
+
         //- Reference points
         mutable pointIOField refPoints_;
 
@@ -291,6 +297,21 @@ class mesquiteMotionSolver
         // Prepare flags for fixed zones
         void initFixedZones();
 
+        // Compute and return cell typeMap
+        labelList cellTypeMap() const;
+
+        // Initialize pointCells addressing
+        void initPointCells() const;
+
+        // Compute and return pointCells addressing
+        const labelListList& pointCells() const;
+
+        // Compute and return cellOffset addressing
+        const labelList& cellOffset() const;
+
+        // Dump current mesh for debugging
+        void writeDecomposition() const;
+
         // Compute centroids based on up-to-date point positions
         void computeCentroids
         (
@@ -298,6 +319,9 @@ class mesquiteMotionSolver
             pointField& faceCentres,
             pointField& cellCentres
         );
+
+        // Apply centroid positions
+        void applyCentroids();
 
         // Copy auxiliary points to/from buffers
         void copyAuxiliaryPoints(bool firstCopy);
