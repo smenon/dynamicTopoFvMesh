@@ -1552,9 +1552,11 @@ void mesquiteMotionSolver::initArrays()
                     const face& checkFace = meshFaces[fIndex];
                     const label& checkOwner = faceOwner[fIndex];
 
+                    const label nP = checkFace.size();
+
                     if (checkOwner == cellI)
                     {
-                        for (label nI = (checkFace.size() - 1); nI > 1; nI--)
+                        for (label nI = (nP - 1); nI > 1; nI--)
                         {
                             cellToNode_[cIndex++] = checkFace[0];
                             cellToNode_[cIndex++] = checkFace[nI];
@@ -1566,7 +1568,7 @@ void mesquiteMotionSolver::initArrays()
                     }
                     else
                     {
-                        for (label nI = 1; nI < (checkFace.size() - 1); nI++)
+                        for (label nI = 1; nI < (nP - 1); nI++)
                         {
                             cellToNode_[cIndex++] = checkFace[0];
                             cellToNode_[cIndex++] = checkFace[nI];
@@ -1589,7 +1591,9 @@ void mesquiteMotionSolver::initArrays()
                     const face& checkFace = meshFaces[fIndex];
                     const label& checkOwner = faceOwner[fIndex];
 
-                    if (checkFace.size() == 3)
+                    const label nP = checkFace.size();
+
+                    if (nP == 3)
                     {
                         if (checkOwner == cellI)
                         {
@@ -1626,10 +1630,10 @@ void mesquiteMotionSolver::initArrays()
 
                         if (checkOwner == cellI)
                         {
-                            forAllReverse(checkFace, nI)
+                            for (label pI = nP - 1, pJ = 0; pJ < nP; pI = pJ++)
                             {
-                                cellToNode_[cIndex++] = checkFace[nI];
-                                cellToNode_[cIndex++] = checkFace.prevLabel(nI);
+                                cellToNode_[cIndex++] = checkFace[pJ];
+                                cellToNode_[cIndex++] = checkFace[pI];
                                 cellToNode_[cIndex++] = fPair.second();
                                 cellToNode_[cIndex++] = cellPoint;
 
@@ -1638,10 +1642,10 @@ void mesquiteMotionSolver::initArrays()
                         }
                         else
                         {
-                            forAll(checkFace, nI)
+                            for (label pI = nP - 1, pJ = 0; pJ < nP; pI = pJ++)
                             {
-                                cellToNode_[cIndex++] = checkFace[nI];
-                                cellToNode_[cIndex++] = checkFace.nextLabel(nI);
+                                cellToNode_[cIndex++] = checkFace[pI];
+                                cellToNode_[cIndex++] = checkFace[pJ];
                                 cellToNode_[cIndex++] = fPair.second();
                                 cellToNode_[cIndex++] = cellPoint;
 
