@@ -284,6 +284,9 @@ class mesquiteMotionSolver
         // Prepare flags for fixed zones
         void initFixedZones();
 
+        // Fix decomposed centroids
+        void fixDecomposedCentroids();
+
         // Compute and return cell typeMap
         labelList cellTypeMap() const;
 
@@ -295,6 +298,9 @@ class mesquiteMotionSolver
 
         // Compute and return cellOffset addressing
         const labelList& cellOffset() const;
+
+        // Clear demand-driven addressing
+        void clearDemandDrivenAddressing();
 
         // Dump current mesh for debugging
         void writeDecomposition() const;

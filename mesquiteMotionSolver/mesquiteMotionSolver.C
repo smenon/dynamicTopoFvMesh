@@ -1394,7 +1394,8 @@ void mesquiteMotionSolver::initArrays()
 
         forAll(checkCell, faceI)
         {
-            const face& checkFace = meshFaces[checkCell[faceI]];
+            const label fIndex = checkCell[faceI];
+            const face& checkFace = meshFaces[fIndex];
 
             switch (decompType_)
             {
@@ -1416,7 +1417,7 @@ void mesquiteMotionSolver::initArrays()
                     else
                     {
                         // Add a central point for the face
-                        labelPair& fPair = faceMarker[checkCell[faceI]];
+                        labelPair& fPair = faceMarker[fIndex];
 
                         if (fPair.first() == -1)
                         {
@@ -1547,8 +1548,9 @@ void mesquiteMotionSolver::initArrays()
             {
                 forAll(checkCell, faceI)
                 {
-                    const face& checkFace = meshFaces[checkCell[faceI]];
-                    const label& checkOwner = faceOwner[checkCell[faceI]];
+                    const label fIndex = checkCell[faceI];
+                    const face& checkFace = meshFaces[fIndex];
+                    const label& checkOwner = faceOwner[fIndex];
 
                     if (checkOwner == cellI)
                     {
@@ -1583,8 +1585,9 @@ void mesquiteMotionSolver::initArrays()
             {
                 forAll(checkCell, faceI)
                 {
-                    const face& checkFace = meshFaces[checkCell[faceI]];
-                    const label& checkOwner = faceOwner[checkCell[faceI]];
+                    const label fIndex = checkCell[faceI];
+                    const face& checkFace = meshFaces[fIndex];
+                    const label& checkOwner = faceOwner[fIndex];
 
                     if (checkFace.size() == 3)
                     {
@@ -1610,11 +1613,11 @@ void mesquiteMotionSolver::initArrays()
                     else
                     {
                         // Add a central point for the face
-                        labelPair& fPair = faceMarker[checkCell[faceI]];
+                        labelPair& fPair = faceMarker[fIndex];
 
                         if (fPair.first() == -1)
                         {
-                            fPair.first() = checkCell[faceI];
+                            fPair.first() = fIndex;
                             fPair.second() = nPoints_ + nDecompPoints_;
 
                             nFacePoints++;
@@ -1693,28 +1696,6 @@ void mesquiteMotionSolver::initArrays()
         }
     }
 
-    // Fix points on decomposed boundary faces
-    forAll(decompFaceCentres_, indexI)
-    {
-        const label fIndex = decompFaceCentres_[indexI].first();
-        const label pIndex = decompFaceCentres_[indexI].second();
-        const label patchI = boundary.whichPatch(fIndex);
-
-        if (patchI < 0)
-        {
-            continue;
-        }
-
-        // Leave processor boundaries out.
-        if (isA<processorPolyPatch>(boundary[patchI]))
-        {
-            continue;
-        }
-
-        // Point is on physical boundary patch
-        fixFlags_[pIndex] = 1;
-    }
-
     // Initialise parallel connectivity, if necessary
     initParallelConnectivity();
 
@@ -1723,6 +1704,12 @@ void mesquiteMotionSolver::initArrays()
 
     // Optionally fix additional boundary layer zone points
     initBoundaryLayerZones();
+
+    // Fix decomposed centroids
+    fixDecomposedCentroids();
+
+    // Clear demand-driven addressing
+    clearDemandDrivenAddressing();
 
     // Set the flag
     arraysInitialized_ = true;
@@ -2693,10 +2680,6 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
         revCellMap.clear();
     }
 
-    // Clear out demand-driven data
-    pointCells_.clear();
-    cellOffset_.clear();
-
     // Wait for transfers to complete
     OPstream::waitRequests();
     IPstream::waitRequests();
@@ -3005,6 +2988,112 @@ void mesquiteMotionSolver::initFixedZones()
 }
 
 
+// Fix decomposed centroids
+void mesquiteMotionSolver::fixDecomposedCentroids()
+{
+    if (nDecompPoints_ == 0)
+    {
+        return;
+    }
+
+    label nFixedFaces = 0;
+
+    const faceList& meshFaces = mesh().faces();
+
+    // Fix points on decomposed boundary faces
+    forAll(decompFaceCentres_, indexI)
+    {
+        const label fIndex = decompFaceCentres_[indexI].first();
+        const label pIndex = decompFaceCentres_[indexI].second();
+
+        const face& checkFace = meshFaces[fIndex];
+
+        bool allFixed = true;
+
+        forAll(checkFace, nI)
+        {
+            const label checkIndex = checkFace[nI];
+
+            if (fixFlags_[checkIndex] == 0)
+            {
+                allFixed = false;
+                break;
+            }
+        }
+
+        if (allFixed)
+        {
+            nFixedFaces++;
+            fixFlags_[pIndex] = 1;
+        }
+    }
+
+    label nFixedCells = 0;
+
+    // Fetch demand-driven data
+    const labelList& typeMap = cellTypeMap();
+    const labelList& cellOffsets = cellOffset();
+    const labelListList& pointCellList = pointCells();
+
+    // Loop through all cells connected to the decomposed cell centroid,
+    // and check if all points on the cell (other than the centroid) are fixed.
+    // If all of them are fixed, then fix the decomposed centroid as well.
+    forAll(decompCellCentres_, indexI)
+    {
+        const label pIndex = decompCellCentres_[indexI].second();
+        const labelList& pCells = pointCellList[pIndex];
+
+        bool allFixed = true;
+
+        forAll(pCells, cellI)
+        {
+            const label cIndex = pCells[cellI];
+
+            // Fetch cellToNode for this cell
+            const label offset = cellOffsets[cIndex];
+            const label cellType = mixedTypes_[cIndex];
+            const label nCellNodes = typeMap[cellType];
+
+            for (label nodeI = 0; nodeI < nCellNodes; nodeI++)
+            {
+                const label checkIndex = cellToNode_[offset + nodeI];
+
+                if (checkIndex == pIndex)
+                {
+                    continue;
+                }
+
+                if (fixFlags_[checkIndex] == 0)
+                {
+                    allFixed = false;
+                    break;
+                }
+            }
+
+            if (!allFixed)
+            {
+                break;
+            }
+        }
+
+        if (allFixed)
+        {
+            nFixedCells++;
+            fixFlags_[pIndex] = 1;
+        }
+    }
+
+    if (debug)
+    {
+        Pout<< "void mesquiteMotionSolver::fixDecomposedCentroids() :"
+            << " Fixed decomposed centroids on "
+            << nFixedCells << " cells and "
+            << nFixedFaces << " faces"
+            << endl;
+    }
+}
+
+
 // Compute and return cell typeMap
 labelList mesquiteMotionSolver::cellTypeMap() const
 {
@@ -3134,6 +3223,14 @@ const labelList& mesquiteMotionSolver::cellOffset() const
     }
 
     return cellOffset_;
+}
+
+
+// Clear demand-driven addressing
+void mesquiteMotionSolver::clearDemandDrivenAddressing()
+{
+    pointCells_.clear();
+    cellOffset_.clear();
 }
 
 
