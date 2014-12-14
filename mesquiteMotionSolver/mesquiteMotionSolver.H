@@ -363,6 +363,9 @@ class mesquiteMotionSolver
             scalar& beta
         );
 
+        // Map boundary condition fields
+        void mapBoundaryConditions(const mapPolyMesh&);
+
         // Update on topology change
         void update(const mapPolyMesh&);
 

@@ -40,6 +40,7 @@ License
 #include "pointPatchField.H"
 #include "pointMesh.H"
 #include "mapPolyMesh.H"
+#include "mesquiteMapper.H"
 
 #include "hexMatcher.H"
 #include "tetMatcher.H"
@@ -5379,6 +5380,71 @@ void mesquiteMotionSolver::updateMesh(const mapPolyMesh& mpm)
 }
 
 
+//- Map boundary condition fields
+void mesquiteMotionSolver::mapBoundaryConditions(const mapPolyMesh& mpm)
+{
+    // Local typedefs
+    typedef typename pointVectorField::InternalField InternalFieldType;
+    typedef typename pointVectorField::GeometricBoundaryField BoundaryFieldType;
+
+    // Create a mapper
+    mesquiteMapper fieldMapper(pointMesh::New(Mesh_), mpm);
+
+    // Fetch reference to fields
+    InternalFieldType& bPoints = basePoints_();
+    InternalFieldType& iField = boundaryConditions_().internalField();
+    BoundaryFieldType& bField = boundaryConditions_().boundaryField();
+
+    // Map internal fields
+    const mesquiteInternalMapper& internalMapper = fieldMapper.internalMap();
+
+    if
+    (
+        (bPoints.size() == internalMapper.sizeBeforeMapping())
+     && (iField.size() == internalMapper.sizeBeforeMapping())
+    )
+    {
+        bPoints.autoMap(internalMapper);
+        iField.autoMap(internalMapper);
+    }
+    else
+    {
+        FatalErrorIn("void mesquiteMotionSolver::mapBoundaryConditions()")
+            << "Incompatible size before mapping." << nl
+            << " Base points field size: " << bPoints.size() << nl
+            << " Boundary Condition internal size: " << iField.size() << nl
+            << " Map size: " << internalMapper.sizeBeforeMapping()
+            << abort(FatalError);
+    }
+
+    // Map boundary fields
+    const mesquiteBoundaryMapper& boundaryMapper = fieldMapper.boundaryMap();
+
+    forAll(bField, pI)
+    {
+        const mesquitePatchMapper& patchMapper = boundaryMapper[pI];
+
+        if (bField[pI].size() == patchMapper.sizeBeforeMapping())
+        {
+            bField[pI].autoMap(patchMapper);
+        }
+        else
+        {
+            FatalErrorIn("void mesquiteMotionSolver::mapBoundaryConditions()")
+                << "Incompatible size before mapping." << nl
+                << " Boundary Condition patch size: " << bField[pI].size() << nl
+                << " Map size: " << patchMapper.sizeBeforeMapping()
+                << abort(FatalError);
+        }
+    }
+
+    if (Mesh_.time().outputTime())
+    {
+        boundaryConditions_().write();
+    }
+}
+
+
 //- Update on topology change
 void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
 {
@@ -5422,7 +5488,7 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
     refPoints_.clear();
     refPoints_ = Mesh_.points();
 
-    // Map basePoints
+    // Map boundary conditions
     if (boundaryConditions_.valid())
     {
         // Fetch reference to basePoints field

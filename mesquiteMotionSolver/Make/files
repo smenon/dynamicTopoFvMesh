@@ -1,3 +1,5 @@
+fieldMapping/mesquiteInternalMapper.C
+fieldMapping/mesquitePatchMapper.C
 mesquiteMotionSolver.C
 
 LIB = $(FOAM_USER_LIBBIN)/libmesquiteMotionSolver
