@@ -182,12 +182,14 @@ topoSurfaceMapper::topoSurfaceMapper
     direct_ = true;
 }
 
+
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 topoSurfaceMapper::~topoSurfaceMapper()
 {
     clearOut();
 }
+
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -209,6 +211,13 @@ label topoSurfaceMapper::sizeBeforeMapping() const
 bool topoSurfaceMapper::direct() const
 {
     return direct_;
+}
+
+
+//- Has unmapped elements
+bool topoSurfaceMapper::hasUnmapped() const
+{
+    return false;
 }
 
 
@@ -316,6 +325,7 @@ void topoSurfaceMapper::operator=(const topoSurfaceMapper& rhs)
             << abort(FatalError);
     }
 }
+
 
 } // End namespace Foam
 

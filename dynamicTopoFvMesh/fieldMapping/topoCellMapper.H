@@ -121,18 +121,12 @@ class topoCellMapper
 
         //- Clear out local storage
         void clearOut();
-        
-        //- Has unmapped elements
-        virtual bool hasUnmapped() const
-        {
-            return false;
-        }
 
 public:
 
     // Constructors
 
-        //- Construct from mapPolyMesh
+        //- Construct from components
         topoCellMapper
         (
             const mapPolyMesh& mpm,
@@ -153,6 +147,9 @@ public:
 
         //- Is the mapping direct
         virtual bool direct() const;
+
+        //- Has unmapped elements
+        virtual bool hasUnmapped() const;
 
         //- Return direct addressing
         virtual const unallocLabelList& directAddressing() const;

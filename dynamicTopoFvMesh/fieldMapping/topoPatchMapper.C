@@ -656,12 +656,14 @@ topoPatchMapper::topoPatchMapper
     }
 }
 
+
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 topoPatchMapper::~topoPatchMapper()
 {
     clearOut();
 }
+
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -690,6 +692,13 @@ label topoPatchMapper::sizeBeforeMapping() const
 bool topoPatchMapper::direct() const
 {
     return direct_;
+}
+
+
+//- Has unmapped elements
+bool topoPatchMapper::hasUnmapped() const
+{
+    return false;
 }
 
 
@@ -824,6 +833,7 @@ void topoPatchMapper::operator=(const topoPatchMapper& rhs)
             << abort(FatalError);
     }
 }
+
 
 } // End namespace Foam
 

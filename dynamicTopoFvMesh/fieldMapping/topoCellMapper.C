@@ -357,12 +357,14 @@ topoCellMapper::topoCellMapper
     }
 }
 
+
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 topoCellMapper::~topoCellMapper()
 {
     clearOut();
 }
+
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -384,6 +386,13 @@ label topoCellMapper::sizeBeforeMapping() const
 bool topoCellMapper::direct() const
 {
     return direct_;
+}
+
+
+//- Has unmapped elements
+bool topoCellMapper::hasUnmapped() const
+{
+    return false;
 }
 
 
@@ -484,6 +493,7 @@ void topoCellMapper::operator=(const topoCellMapper& rhs)
             << abort(FatalError);
     }
 }
+
 
 } // End namespace Foam
 
