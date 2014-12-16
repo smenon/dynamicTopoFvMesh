@@ -51,8 +51,8 @@ namespace Foam
 {
 
 // Class forward declarations
-class pointPatch;
 class mapPolyMesh;
+class facePointPatch;
 class mesquiteMapper;
 
 /*---------------------------------------------------------------------------*\
@@ -66,7 +66,7 @@ class mesquitePatchMapper
     // Private data
 
         //- Reference to patch
-        const pointPatch& patch_;
+        const facePointPatch& patch_;
 
         //- Reference to mapPolyMesh
         const mapPolyMesh& mpm_;
@@ -94,6 +94,9 @@ class mesquitePatchMapper
         //- Inserted points
         mutable labelList* insertedPointLabelsPtr_;
 
+        //- Inserted point addressing
+        mutable labelListList* insertedPointAddressingPtr_;
+
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -101,6 +104,9 @@ class mesquitePatchMapper
 
         //- Disallow default bitwise assignment
         void operator=(const mesquitePatchMapper&);
+
+        //- Calculate the inserted point addressing list
+        void calcInsertedPointAddressing() const;
 
         //- Calculate addressing for interpolative mapping
         void calcAddressing() const;
@@ -115,7 +121,7 @@ public:
 
     // Constructors
 
-        //- Construct from mapPolyMesh
+        //- Construct from components
         mesquitePatchMapper
         (
             const pointPatch& patch,
@@ -155,6 +161,9 @@ public:
 
         //- Return list of inserted objects
         virtual const labelList& insertedObjectLabels() const;
+
+        //- Return addressing for inserted points
+        const labelListList& insertedPointAddressing() const;
 };
 
 

@@ -54,6 +54,82 @@ void mesquiteInternalMapper::calcAddressing() const
             << "Addressing already calculated."
             << abort(FatalError);
     }
+
+    // Allocate for inserted point labels
+    label nInsertedPoints = 0;
+
+    insertedPointLabelsPtr_ = new labelList(mpm_.mesh().nPoints(), -1);
+    labelList& insertedPoints = *insertedPointLabelsPtr_;
+
+    if (direct())
+    {
+        // Direct addressing, no weights
+        directAddrPtr_ = new labelList(mpm_.pointMap());
+    }
+    else
+    {
+        // Interpolative addressing
+        interpolationAddrPtr_ = new labelListList(mpm_.mesh().nPoints());
+        labelListList& addr = *interpolationAddrPtr_;
+
+        const List<objectMap>& pfp = mpm_.pointsFromPointsMap();
+
+        forAll(pfp, pfpI)
+        {
+            // Get addressing
+            const labelList& mo = pfp[pfpI].masterObjects();
+
+            label pointI = pfp[pfpI].index();
+
+            if (addr[pointI].size() > 0)
+            {
+                FatalErrorIn
+                (
+                    "void mesquiteInternalMapper::calcAddressing() const"
+                )
+                    << "Master point " << pointI
+                    << " mapped from points " << mo
+                    << " is already destination for mapping."
+                    << abort(FatalError);
+            }
+
+            // Set master objects
+            addr[pointI] = mo;
+        }
+
+        // Do mapped points.
+        // Note that this can already be set by pointsFromPoints,
+        // so check if addressing size still zero.
+        const labelList& pm = mpm_.pointMap();
+
+        forAll(pm, pointI)
+        {
+            // Mapped from a single point
+            if (pm[pointI] > -1 && addr[pointI].empty())
+            {
+                addr[pointI] = labelList(1, pm[pointI]);
+            }
+
+            // Check for inserted points without any addressing
+            if (pm[pointI] < 0 && addr[pointI].empty())
+            {
+                insertedPoints[nInsertedPoints++] = pointI;
+            }
+        }
+    }
+
+    // Shorten inserted points to actual size
+    insertedPoints.setSize(nInsertedPoints);
+
+    if (nInsertedPoints)
+    {
+        FatalErrorIn("void mesquiteInternalMapper::calcAddressing() const")
+            << " Found " << nInsertedPoints << " which are"
+            << " not mapped from any parent points." << nl
+            << " List: " << nl
+            << insertedPoints
+            << abort(FatalError);
+    }
 }
 
 
@@ -65,6 +141,23 @@ void mesquiteInternalMapper::calcWeights() const
         FatalErrorIn("void mesquiteInternalMapper::calcWeights() const")
             << "Weights already calculated."
             << abort(FatalError);
+    }
+
+    // Fetch interpolative addressing
+    const labelListList& addr = addressing();
+
+    // Allocate memory
+    weightsPtr_ = new scalarListList(size());
+    scalarListList& weights = *weightsPtr_;
+
+    forAll(addr, pointI)
+    {
+        const labelList& mo = addr[pointI];
+
+        // Specify equal weights
+        const scalar weight = (1.0 / scalar(mo.size()));
+
+        weights[pointI] = scalarList(mo.size(), weight);
     }
 }
 
@@ -214,14 +307,14 @@ const scalarListList& mesquiteInternalMapper::weights() const
 }
 
 
-//- Are there any inserted cells
+//- Are there any inserted objects
 bool mesquiteInternalMapper::insertedObjects() const
 {
     return insertedObjectLabels().size();
 }
 
 
-//- Return list of inserted cells
+//- Return list of inserted objects
 const labelList& mesquiteInternalMapper::insertedObjectLabels() const
 {
     if (!insertedPointLabelsPtr_)
