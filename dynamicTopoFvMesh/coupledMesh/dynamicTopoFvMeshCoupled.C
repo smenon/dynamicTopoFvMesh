@@ -1372,18 +1372,18 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     Map<label> nCellFaces;
 
     // Track inserted entities
-    List<Map<label> > pointsToInsert(procIndices_.size());
-    List<Map<label> > edgesToInsert(procIndices_.size());
-    List<Map<label> > facesToInsert(procIndices_.size());
-    List<Map<label> > cellsToInsert(procIndices_.size());
+    List<labelMap> pointsToInsert(procIndices_.size());
+    List<labelMap> edgesToInsert(procIndices_.size());
+    List<labelMap> facesToInsert(procIndices_.size());
+    List<labelMap> cellsToInsert(procIndices_.size());
 
     // Track converted entities
-    List<Map<label> > edgesToConvert(procIndices_.size());
-    List<Map<label> > facesToConvert(procIndices_.size());
+    List<labelMap> edgesToConvert(procIndices_.size());
+    List<labelMap> facesToConvert(procIndices_.size());
 
     // Track edge / face patch information
-    List<Map<label> > masterConvertEdgePatch(procIndices_.size());
-    List<Map<label> > masterConvertFacePatch(procIndices_.size());
+    List<labelMap> masterConvertEdgePatch(procIndices_.size());
+    List<labelMap> masterConvertFacePatch(procIndices_.size());
 
     Map<label> createPatch;
     labelList slaveConvertPatch(procIndices_.size(), -1);
@@ -6239,7 +6239,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     //   at the end of the list.
     labelList bdyFaceSizes(boundary.size() + 1, 0);
     labelList bdyFaceStarts(boundary.size() + 1, 0);
-    List<Map<label> > bdyFaceIndices(boundary.size() + 1);
+    List<labelMap> bdyFaceIndices(boundary.size() + 1);
 
     // Allocate the faceMap. Since the number of internal faces is unknown,
     // detect internal ones first and update boundaries later.
@@ -6332,7 +6332,7 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
     //   at the end of the list.
     labelList bdyEdgeSizes(boundary.size() + 1, 0);
     labelList bdyEdgeStarts(boundary.size() + 1, 0);
-    List<Map<label> > bdyEdgeIndices(boundary.size() + 1);
+    List<labelMap> bdyEdgeIndices(boundary.size() + 1);
 
     // Allocate the edgeMap. Since the number of internal edges is unknown,
     // detect internal ones first and update boundaries later.

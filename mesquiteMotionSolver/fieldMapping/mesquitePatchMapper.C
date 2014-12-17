@@ -47,13 +47,13 @@ namespace Foam
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 //- Calculate the inserted point addressing list
-void mesquitePatchMapper::calcInsertedPointAddressing() const
+void mesquitePatchMapper::calcInsertedAddressing() const
 {
     if (insertedPointLabelsPtr_ || insertedPointAddressingPtr_)
     {
         FatalErrorIn
         (
-            "void mesquitePatchMapper::calcInsertedPointAddressing() const"
+            "void mesquitePatchMapper::calcInsertedAddressing() const"
         )   << " Inserted labels has already been calculated."
             << abort(FatalError);
     }
@@ -67,14 +67,15 @@ void mesquitePatchMapper::calcInsertedPointAddressing() const
     insertedPointAddressingPtr_ = new labelListList(size(), labelList(0));
     labelListList& insertedAddressing = *insertedPointAddressingPtr_;
 
-    // Fetch the current point maps for this patch
-    const Map<label>& meshPointMap = patch_.patch().meshPointMap();
+    // Fetch the point maps for this patch
+    const Map<label>& oldMeshPointMap = patchMeshPointMap();
+    const Map<label>& newMeshPointMap = patch_.patch().meshPointMap();
 
     // Loop through the pointsFromPoints map,
     // and pick inserted points on the same patch.
     const List<objectMap>& pfp = mpm_.pointsFromPointsMap();
 
-    Map<label>::const_iterator pIter;
+    Map<label>::const_iterator poIter, pnIter;
 
     forAll(pfp, pfpI)
     {
@@ -82,9 +83,9 @@ void mesquitePatchMapper::calcInsertedPointAddressing() const
         const label pIndex = pObj.index();
 
         // Check if the index belongs to this patch
-        pIter = meshPointMap.find(pIndex);
+        pnIter = newMeshPointMap.find(pIndex);
 
-        if (pIter == meshPointMap.end())
+        if (pnIter == newMeshPointMap.end())
         {
             continue;
         }
@@ -96,7 +97,7 @@ void mesquitePatchMapper::calcInsertedPointAddressing() const
         {
             FatalErrorIn
             (
-                "void mesquitePatchMapper::calcInsertedPointAddressing() const"
+                "void mesquitePatchMapper::calcInsertedAddressing() const"
             )   << " Mapping for inserted boundary point is incorrect."
                 << " Found an empty masterObjects list."
                 << nl << " Point: " << pIndex
@@ -106,16 +107,35 @@ void mesquitePatchMapper::calcInsertedPointAddressing() const
 
         // Make an entry for the inserted label,
         // and renumber addressing to patch.
-        insertedPoints[nInsertedPoints] = pIter();
+        insertedPoints[nInsertedPoints] = pnIter();
 
         // Make an entry for addressing
         labelList& addr = insertedAddressing[nInsertedPoints];
 
         addr.setSize(mo.size());
 
-        forAll(addr, indexI)
+        forAll(mo, indexI)
         {
+            const label oldIndex = mo[indexI];
 
+            // Check if the index belongs to this patch
+            poIter = oldMeshPointMap.find(oldIndex);
+
+            if (poIter == oldMeshPointMap.end())
+            {
+                FatalErrorIn
+                (
+                    "void mesquitePatchMapper::calcInsertedAddressing() const"
+                )   << " Mapping for inserted boundary point is incorrect."
+                    << " Found an master point that doesn't belong to the patch"
+                    << nl << " Point: " << pIndex
+                    << nl << " Master: " << oldIndex
+                    << nl << " Patch: " << patch_.name()
+                    << abort(FatalError);
+            }
+
+            // Add renumbered entity
+            addr[indexI] = poIter();
         }
 
         nInsertedPoints++;
@@ -124,6 +144,52 @@ void mesquitePatchMapper::calcInsertedPointAddressing() const
     // Shorten inserted points to actual size
     insertedPoints.setSize(nInsertedPoints);
     insertedAddressing.setSize(nInsertedPoints);
+}
+
+
+//- Calculate the patch mesh point map
+void mesquitePatchMapper::calcPatchMeshPointMap() const
+{
+    if (patchMeshPointMapPtr_)
+    {
+        FatalErrorIn("void mesquitePatchMapper::calcPatchMeshPointMap() const")
+            << "Mesh point map already calculated."
+            << abort(FatalError);
+    }
+
+    typedef IOList<labelList> labelListIOList;
+    const word addrName("oldPatchMeshPoints");
+    const bool found = mpm_.mesh().foundObject<labelListIOList>(addrName);
+
+    if (!found)
+    {
+        FatalErrorIn
+        (
+            "void mesquitePatchMapper::calcPatchMeshPointMap() const"
+        )   << " Failed to find old patch mesh points in the object registry."
+            << nl << " The mesh is expected to register an object"
+            << nl << " of type: " << labelListIOList::typeName
+            << nl << " with the name: " << addrName
+            << nl << " Patch: " << patch_.name()
+            << abort(FatalError);
+    }
+
+    // Fetch the patch mesh points from the registry
+    const labelList& pMeshPoints =
+    (
+        mpm_.mesh().lookupObject<labelListIOList>(addrName)[patch_.index()]
+    );
+
+    // Allocate the map
+    patchMeshPointMapPtr_ = new Map<label>(2 * pMeshPoints.size());
+
+    // Insert point addressing
+    Map<label>& mpMap = *patchMeshPointMapPtr_;
+
+    forAll(pMeshPoints, pointI)
+    {
+        mpMap.insert(pMeshPoints[pointI], pointI);
+    }
 }
 
 
@@ -275,6 +341,7 @@ void mesquitePatchMapper::clearOut()
     deleteDemandDrivenData(weightsPtr_);
     deleteDemandDrivenData(insertedPointLabelsPtr_);
     deleteDemandDrivenData(insertedPointAddressingPtr_);
+    deleteDemandDrivenData(patchMeshPointMapPtr_);
 }
 
 
@@ -301,7 +368,8 @@ mesquitePatchMapper::mesquitePatchMapper
     interpolationAddrPtr_(NULL),
     weightsPtr_(NULL),
     insertedPointLabelsPtr_(NULL),
-    insertedPointAddressingPtr_(NULL)
+    insertedPointAddressingPtr_(NULL),
+    patchMeshPointMapPtr_(NULL)
 {
     // Check for the possibility of direct mapping
     if (insertedObjects())
@@ -431,7 +499,7 @@ const labelList& mesquitePatchMapper::insertedObjectLabels() const
 {
     if (!insertedPointLabelsPtr_)
     {
-        calcInsertedPointAddressing();
+        calcInsertedAddressing();
     }
 
     return *insertedPointLabelsPtr_;
@@ -443,10 +511,22 @@ const labelListList& mesquitePatchMapper::insertedPointAddressing() const
 {
     if (!insertedPointAddressingPtr_)
     {
-        calcInsertedPointAddressing();
+        calcInsertedAddressing();
     }
 
     return *insertedPointAddressingPtr_;
+}
+
+
+//- Return the patch mesh point map
+const Map<label>& mesquitePatchMapper::patchMeshPointMap() const
+{
+    if (!patchMeshPointMapPtr_)
+    {
+        calcPatchMeshPointMap();
+    }
+
+    return *patchMeshPointMapPtr_;
 }
 
 

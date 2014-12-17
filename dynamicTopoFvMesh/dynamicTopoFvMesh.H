@@ -84,6 +84,7 @@ class dynamicTopoFvMesh
 {
     // Private typedefs
 
+        typedef Map<label> labelMap;
         typedef coupledInfo<dynamicTopoFvMesh> coupledMesh;
         typedef threadHandler<dynamicTopoFvMesh> meshHandler;
 

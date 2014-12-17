@@ -4160,7 +4160,7 @@ bool dynamicTopoFvMesh::resetMesh()
         labelListList cellZoneMap(cellZones.size());
 
         // Obtain faceZone point maps before reordering
-        List<Map<label> > oldFaceZonePointMaps(faceZones.size());
+        List<labelMap> oldFaceZonePointMaps(faceZones.size());
 
         forAll(faceZones, fzI)
         {
@@ -4190,12 +4190,24 @@ bool dynamicTopoFvMesh::resetMesh()
             << reOrderingTimer.elapsedTime() << " s"
             << endl;
 
+        // Define a registry entry for patch meshPoints
+        IOobject oldPatchMeshPointsIO
+        (
+            "oldPatchMeshPoints",
+            time().timeName(),
+            (*this),
+            IOobject::NO_READ,
+            IOobject::NO_WRITE
+        );
+
         // Obtain the patch-point maps before resetting the mesh
-        List<Map<label> > oldPatchPointMaps(nOldPatches);
+        List<labelMap> oldPatchPointMaps(nOldPatches);
+        IOList<labelList> oldPatchMeshPoints(oldPatchMeshPointsIO, nOldPatches);
 
         forAll(oldPatchPointMaps, patchI)
         {
             oldPatchPointMaps[patchI] = boundaryMesh()[patchI].meshPointMap();
+            oldPatchMeshPoints[patchI] = boundaryMesh()[patchI].meshPoints();
         }
 
         // Set weighting information.

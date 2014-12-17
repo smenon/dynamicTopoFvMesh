@@ -47,9 +47,6 @@ SourceFiles
 namespace Foam
 {
 
-// Class forward declarations
-typedef IOList<labelList> labelListIOList;
-
 /*---------------------------------------------------------------------------*\
                            Class eMesh Declaration
 \*---------------------------------------------------------------------------*/
@@ -58,6 +55,10 @@ class eMesh
 :
     public objectRegistry
 {
+    // Private typedefs
+
+        typedef IOList<labelList> labelListIOList;
+
     // Private data
 
         const polyMesh& mesh_;

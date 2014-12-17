@@ -97,6 +97,9 @@ class mesquitePatchMapper
         //- Inserted point addressing
         mutable labelListList* insertedPointAddressingPtr_;
 
+        //- Mesh point map for the patch
+        mutable Map<label>* patchMeshPointMapPtr_;
+
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
@@ -106,7 +109,10 @@ class mesquitePatchMapper
         void operator=(const mesquitePatchMapper&);
 
         //- Calculate the inserted point addressing list
-        void calcInsertedPointAddressing() const;
+        void calcInsertedAddressing() const;
+
+        //- Calculate the patch mesh point map
+        void calcPatchMeshPointMap() const;
 
         //- Calculate addressing for interpolative mapping
         void calcAddressing() const;
@@ -164,6 +170,9 @@ public:
 
         //- Return addressing for inserted points
         const labelListList& insertedPointAddressing() const;
+
+        //- Return the patch mesh point map
+        const Map<label>& patchMeshPointMap() const;
 };
 
 
