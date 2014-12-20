@@ -5388,7 +5388,7 @@ void mesquiteMotionSolver::solve()
         pointField& bpField = basePoints_().internalField();
         pointField& bcField = boundaryConditions_().internalField();
 
-    	bcField = refPoints_ - bpField;
+        bcField = refPoints_ - bpField;
     }
 }
 

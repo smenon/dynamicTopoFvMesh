@@ -52,7 +52,7 @@ void mapPointFields
     {
         FieldType* field = fieldList[fieldI];
 
-        //if (fvMesh::debug)
+        if (fvMesh::debug)
         {
             Info<< "Mapping "
                 << field->typeName
@@ -73,7 +73,7 @@ void mapPointFields
         }
         else
         {
-            FatalErrorIn("void topoMapper::mapPointFields()")
+            FatalErrorIn("void mapPointFields(const topoMapper&)")
                 << "Incompatible size before mapping." << nl
                 << " Internal field size: " << iField.size() << nl
                 << " Map size: " << internalMapper.sizeBeforeMapping()
@@ -93,7 +93,7 @@ void mapPointFields
             }
             else
             {
-                FatalErrorIn("void topoMapper::mapPointFields()")
+                FatalErrorIn("void mapPointFields(const topoMapper&)")
                     << "Incompatible size before mapping." << nl
                     << " Boundary patch size: " << bField[pI].size() << nl
                     << " Map size: " << patchMapper.sizeBeforeMapping()
