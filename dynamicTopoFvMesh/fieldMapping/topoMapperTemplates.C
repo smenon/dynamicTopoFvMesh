@@ -189,6 +189,96 @@ void topoMapper::storeGradients
 }
 
 
+// De-register point fields of specified type
+template <class FieldType>
+void topoMapper::deregisterPointFields
+(
+    const objectRegistry& registry,
+    List<FieldType*>& fieldList
+)
+{
+    typedef HashTable<const FieldType*> FieldTypeTable;
+
+    FieldTypeTable fields(registry.lookupClass<FieldType>());
+
+    // Track field count
+    label nFields = 0;
+
+    for
+    (
+        typename FieldTypeTable::iterator fIter = fields.begin();
+        fIter != fields.end();
+        ++fIter
+    )
+    {
+        nFields++;
+    }
+
+    // Size up the list
+    fieldList.setSize(nFields);
+
+    label fieldIndex = 0;
+
+    for
+    (
+        typename FieldTypeTable::iterator fIter = fields.begin();
+        fIter != fields.end();
+        ++fIter
+    )
+    {
+        FieldType* field = const_cast<FieldType*>(fIter());
+
+        if (fvMesh::debug)
+        {
+            Info<< "De-registering and storing "
+                << field->typeName
+                << ' ' << field->name()
+                << endl;
+        }
+
+        // Check-out the field
+        registry.checkOut(*field);
+
+        // Add pointer to list
+        fieldList[fieldIndex] = field;
+
+        fieldIndex++;
+    }
+}
+
+
+// Re-register point fields of specified type
+template <class FieldType>
+void topoMapper::reregisterPointFields
+(
+    const objectRegistry& registry,
+    List<FieldType*>& fieldList
+)
+{
+    forAll(fieldList, fieldI)
+    {
+        FieldType* field = fieldList[fieldI];
+
+        if (fvMesh::debug)
+        {
+            Info<< "Re-registering "
+                << field->typeName
+                << ' ' << field->name()
+                << endl;
+        }
+
+        // Check-in the field
+        registry.checkIn(*field);
+
+        // Remove the pointer
+        fieldList[fieldI] = NULL;
+    }
+
+    // Clear the list
+    fieldList.clear();
+}
+
+
 } // End namespace Foam
 
 // ************************************************************************* //

@@ -4568,8 +4568,14 @@ void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
     // Delete oldPoints in polyMesh
     polyMesh::resetMotion();
 
+    // De-register all pointFields before updateMesh
+    topoMapper::deregisterPointFields(*this);
+
     // Update fvMesh and polyMesh, and map all fields
     fvMesh::updateMesh(mpm);
+
+    // Re-register all pointFields after updateMesh
+    topoMapper::reregisterPointFields(*this);
 }
 
 
@@ -4596,7 +4602,7 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm)
     // Set the mapPolyMesh object in the mapper
     fieldMapper.setMapper(mpm);
 
-    // Deregister gradient fields and centres,
+    // De-register gradient fields and centres,
     // but retain for mapping
     fieldMapper.deregisterMeshInformation();
 

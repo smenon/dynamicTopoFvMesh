@@ -276,8 +276,7 @@ void mesquiteMotionSolver::readOptions()
                     Mesh_.time().timeName(),
                     Mesh_,
                     IOobject::MUST_READ,
-                    IOobject::AUTO_WRITE,
-                    false
+                    IOobject::AUTO_WRITE
                 ),
                 pointMesh::New(Mesh_)
             )
@@ -5437,11 +5436,6 @@ void mesquiteMotionSolver::mapBoundaryConditions(const mapPolyMesh& mpm)
                 << " Map size: " << patchMapper.sizeBeforeMapping()
                 << abort(FatalError);
         }
-    }
-
-    if (Mesh_.time().outputTime())
-    {
-        boundaryConditions_().write();
     }
 }
 

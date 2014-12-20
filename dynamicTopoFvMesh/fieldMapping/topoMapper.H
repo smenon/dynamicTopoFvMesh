@@ -47,6 +47,7 @@ SourceFiles
 #include "PtrList.H"
 #include "IOmanip.H"
 #include "volFields.H"
+#include "pointFields.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -77,6 +78,10 @@ class topoMapper
 
         //- Reference to the options dictionary
         const dictionary& dict_;
+
+        //- Registered pointFields
+        static List<pointScalarField*> psFieldPtrs_;
+        static List<pointVectorField*> pvFieldPtrs_;
 
     // Demand-driven private data
 
@@ -149,6 +154,24 @@ class topoMapper
         //- Set geometric information
         void storeGeometry() const;
 
+    // Static private member functions
+
+        // De-register point fields of specified type
+        template <class FieldType>
+        static void deregisterPointFields
+        (
+            const objectRegistry& registry,
+            List<FieldType*>& fieldList
+        );
+
+        // Re-register point fields of specified type
+        template <class FieldType>
+        static void reregisterPointFields
+        (
+            const objectRegistry& registry,
+            List<FieldType*>& fieldList
+        );
+
 public:
 
     // Constructors
@@ -164,6 +187,14 @@ public:
     // Destructor
 
         ~topoMapper();
+
+    // Static member functions
+
+        //- De-register all pointFields
+        static void deregisterPointFields(const objectRegistry& registry);
+
+        //- Re-register all pointFields
+        static void reregisterPointFields(const objectRegistry& registry);
 
     // Member Functions
 

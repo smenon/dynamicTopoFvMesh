@@ -44,6 +44,11 @@ Author
 namespace Foam
 {
 
+// * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
+
+List<pointScalarField*> topoMapper::psFieldPtrs_;
+List<pointVectorField*> topoMapper::pvFieldPtrs_;
+
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 //- Store gradients prior to mesh reset
@@ -209,6 +214,22 @@ topoMapper::~topoMapper()
 }
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
+
+//- De-register all pointFields
+void topoMapper::deregisterPointFields(const objectRegistry& registry)
+{
+    topoMapper::deregisterPointFields(registry, psFieldPtrs_);
+    topoMapper::deregisterPointFields(registry, pvFieldPtrs_);
+}
+
+
+//- Re-register all pointFields
+void topoMapper::reregisterPointFields(const objectRegistry& registry)
+{
+    topoMapper::reregisterPointFields(registry, psFieldPtrs_);
+    topoMapper::reregisterPointFields(registry, pvFieldPtrs_);
+}
+
 
 //- Return reference to the mesh
 const fvMesh& topoMapper::mesh() const
