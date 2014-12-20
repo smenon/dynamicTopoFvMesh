@@ -57,8 +57,10 @@ namespace Foam
 // Class forward declarations
 class fluxCorrector;
 class topoCellMapper;
+class topoPointMapper;
 class topoSurfaceMapper;
 class topoBoundaryMeshMapper;
+class topoPointBoundaryMapper;
 
 /*---------------------------------------------------------------------------*\
                          Class topoMapper Declaration
@@ -88,11 +90,17 @@ class topoMapper
         //- Cell mapper
         mutable autoPtr<topoCellMapper> cellMap_;
 
+        //- Point mapper
+        mutable autoPtr<topoPointMapper> pointMap_;
+
         //- Surface mapper
         mutable autoPtr<topoSurfaceMapper> surfaceMap_;
 
         //- Boundary mapper
         mutable autoPtr<topoBoundaryMeshMapper> boundaryMap_;
+
+        //- Point boundary mapper
+        mutable autoPtr<topoPointBoundaryMapper> pointBoundaryMap_;
 
         //- Flux corrector
         mutable autoPtr<fluxCorrector> fluxCorrector_;
@@ -289,7 +297,11 @@ public:
 
         //- Fetch the gradient field
         template <class Type>
-        Type& gradient(const word& name) const;
+        const Type& gradient(const word& name) const;
+
+        //- Fetch the pointField list
+        template <class Type>
+        const List<Type*>& pointFieldList() const;
 
         //- Correct fluxes after topology change
         void correctFluxes() const;
@@ -297,11 +309,17 @@ public:
         //- Return volume mapper
         const topoCellMapper& volMap() const;
 
+        //- Return point mapper
+        const topoPointMapper& pointMap() const;
+
         //- Return surface mapper
         const topoSurfaceMapper& surfaceMap() const;
 
         //- Return boundary mapper
         const topoBoundaryMeshMapper& boundaryMap() const;
+
+        //- Return point boundary mapper
+        const topoPointBoundaryMapper& pointBoundaryMap() const;
 
         //- Return flux-corrector
         const fluxCorrector& surfaceFluxCorrector() const;

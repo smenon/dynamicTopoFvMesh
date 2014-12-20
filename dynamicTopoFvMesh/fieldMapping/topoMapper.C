@@ -38,8 +38,10 @@ Author
 #include "topoMapper.H"
 #include "fluxCorrector.H"
 #include "topoCellMapper.H"
+#include "topoPointMapper.H"
 #include "topoSurfaceMapper.H"
 #include "topoBoundaryMeshMapper.H"
+#include "topoPointBoundaryMapper.H"
 
 namespace Foam
 {
@@ -197,8 +199,10 @@ topoMapper::topoMapper
     mesh_(mesh),
     dict_(dict),
     cellMap_(NULL),
+    pointMap_(NULL),
     surfaceMap_(NULL),
     boundaryMap_(NULL),
+    pointBoundaryMap_(NULL),
     fluxCorrector_(fluxCorrector::New(mesh, dict)),
     cellVolumesPtr_(NULL),
     cellCentresPtr_(NULL),
@@ -251,8 +255,10 @@ void topoMapper::setMapper(const mapPolyMesh& mpm) const
     if
     (
         cellMap_.valid() ||
+        pointMap_.valid() ||
         surfaceMap_.valid() ||
-        boundaryMap_.valid()
+        boundaryMap_.valid() ||
+        pointBoundaryMap_.valid()
     )
     {
         FatalErrorIn
@@ -266,6 +272,12 @@ void topoMapper::setMapper(const mapPolyMesh& mpm) const
     cellMap_.set(new topoCellMapper(mpm, *this));
     surfaceMap_.set(new topoSurfaceMapper(mpm, *this));
     boundaryMap_.set(new topoBoundaryMeshMapper(mesh(), mpm, *this));
+
+    const pointMesh& pMesh = pointMesh::New(mpm.mesh());
+
+    // Set point mappers
+    pointMap_.set(new topoPointMapper(pMesh, mpm, *this));
+    pointBoundaryMap_.set(new topoPointBoundaryMapper(pMesh, mpm, *this));
 }
 
 
@@ -484,13 +496,13 @@ const wordList topoMapper::gradientTable() const
 
 //- Fetch the gradient field (template specialisation)
 template <>
-volVectorField& topoMapper::gradient(const word& name) const
+const volVectorField& topoMapper::gradient(const word& name) const
 {
     if (!gradTable_.found(name))
     {
         FatalErrorIn
         (
-            "volVectorField& topoMapper::gradient(const word& name) const"
+            "const volVectorField& topoMapper::gradient(const word& name) const"
         ) << nl << " Gradient for: " << name
           << " has not been stored."
           << abort(FatalError);
@@ -502,19 +514,35 @@ volVectorField& topoMapper::gradient(const word& name) const
 
 //- Fetch the gradient field (template specialisation)
 template <>
-volTensorField& topoMapper::gradient(const word& name) const
+const volTensorField& topoMapper::gradient(const word& name) const
 {
     if (!gradTable_.found(name))
     {
         FatalErrorIn
         (
-            "volTensorField& topoMapper::gradient(const word& name) const"
+            "const volTensorField& topoMapper::gradient(const word& name) const"
         ) << nl << " Gradient for: " << name
           << " has not been stored."
           << abort(FatalError);
     }
 
     return vGradPtrs_[gradTable_[name].second()];
+}
+
+
+//- Fetch the pointField list (template specialisation)
+template <>
+const List<pointScalarField*>& topoMapper::pointFieldList() const
+{
+    return psFieldPtrs_;
+}
+
+
+//- Fetch the pointField list (template specialisation)
+template <>
+const List<pointVectorField*>& topoMapper::pointFieldList() const
+{
+    return pvFieldPtrs_;
 }
 
 
@@ -572,6 +600,22 @@ const topoCellMapper& topoMapper::volMap() const
 }
 
 
+//- Return point mapper
+const topoPointMapper& topoMapper::pointMap() const
+{
+    if (!pointMap_.valid())
+    {
+        FatalErrorIn
+        (
+            "const topoPointMapper& topoMapper::pointMap() const"
+        ) << nl << " Point mapper has not been set. "
+          << abort(FatalError);
+    }
+
+    return pointMap_();
+}
+
+
 //- Return surface mapper
 const topoSurfaceMapper& topoMapper::surfaceMap() const
 {
@@ -604,6 +648,23 @@ const topoBoundaryMeshMapper& topoMapper::boundaryMap() const
 }
 
 
+//- Return point boundary mapper
+const topoPointBoundaryMapper& topoMapper::pointBoundaryMap() const
+{
+    if (!pointBoundaryMap_.valid())
+    {
+        FatalErrorIn
+        (
+            "const topoPointBoundaryMapper& "
+            "topoMapper::pointBoundaryMap() const"
+        ) << nl << " Point boundary mapper has not been set. "
+          << abort(FatalError);
+    }
+
+    return pointBoundaryMap_();
+}
+
+
 //- Return flux-corrector
 const fluxCorrector& topoMapper::surfaceFluxCorrector() const
 {
@@ -625,8 +686,10 @@ void topoMapper::clear() const
 {
     // Clear out mappers
     cellMap_.clear();
+    pointMap_.clear();
     surfaceMap_.clear();
     boundaryMap_.clear();
+    pointBoundaryMap_.clear();
 
     // Clear index maps
     gradTable_.clear();

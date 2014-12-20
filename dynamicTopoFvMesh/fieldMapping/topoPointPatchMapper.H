@@ -23,7 +23,7 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    mesquitePatchMapper
+    topoPointPatchMapper
 
 Description
     This object provides mapping and fill-in information for patch
@@ -36,12 +36,12 @@ Author
     All rights reserved
 
 SourceFiles
-    mesquitePatchMapper.C
+    topoPointPatchMapper.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef mesquitePatchMapper_H
-#define mesquitePatchMapper_H
+#ifndef topoPointPatchMapper_H
+#define topoPointPatchMapper_H
 
 #include "pointPatchFieldMapper.H"
 
@@ -51,15 +51,15 @@ namespace Foam
 {
 
 // Class forward declarations
+class topoMapper;
 class mapPolyMesh;
 class facePointPatch;
-class mesquiteMapper;
 
 /*---------------------------------------------------------------------------*\
-                    Class mesquitePatchMapper Declaration
+                    Class topoPointPatchMapper Declaration
 \*---------------------------------------------------------------------------*/
 
-class mesquitePatchMapper
+class topoPointPatchMapper
 :
     public pointPatchFieldMapper
 {
@@ -71,8 +71,8 @@ class mesquitePatchMapper
         //- Reference to mapPolyMesh
         const mapPolyMesh& mpm_;
 
-        //- Reference to the mesquiteMapper
-        const mesquiteMapper& tMapper_;
+        //- Reference to the topoMapper
+        const topoMapper& tMapper_;
 
         //- Is the mapping direct
         bool direct_;
@@ -103,10 +103,10 @@ class mesquitePatchMapper
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
-        mesquitePatchMapper(const mesquitePatchMapper&);
+        topoPointPatchMapper(const topoPointPatchMapper&);
 
         //- Disallow default bitwise assignment
-        void operator=(const mesquitePatchMapper&);
+        void operator=(const topoPointPatchMapper&);
 
         //- Calculate the inserted point addressing list
         void calcInsertedAddressing() const;
@@ -128,16 +128,16 @@ public:
     // Constructors
 
         //- Construct from components
-        mesquitePatchMapper
+        topoPointPatchMapper
         (
             const pointPatch& patch,
             const mapPolyMesh& mpm,
-            const mesquiteMapper& mapper
+            const topoMapper& mapper
         );
 
     // Destructor
 
-        virtual ~mesquitePatchMapper();
+        virtual ~topoPointPatchMapper();
 
     // Member Functions
 

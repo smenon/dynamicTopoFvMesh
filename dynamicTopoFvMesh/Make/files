@@ -35,8 +35,10 @@ convexSetAlgorithm/cellSetAlgorithm.C
 fieldMapping/topoMapper.C
 fieldMapping/fluxCorrector.C
 fieldMapping/topoCellMapper.C
+fieldMapping/topoPointMapper.C
 fieldMapping/topoPatchMapper.C
 fieldMapping/topoSurfaceMapper.C
+fieldMapping/topoPointPatchMapper.C
 
 tetMetrics = tetMetrics
 $(tetMetrics)/tetMetric.C

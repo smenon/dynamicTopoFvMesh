@@ -155,7 +155,7 @@ class mesquiteMotionSolver
         mutable pointField origPoints_;
 
         //- Base points for pointDisplacement boundary conditions
-        mutable autoPtr<pointIOField> basePoints_;
+        mutable autoPtr<pointVectorField> basePoints_;
 
         //- Boundary conditions
         mutable autoPtr<pointVectorField> boundaryConditions_;
@@ -362,9 +362,6 @@ class mesquiteMotionSolver
             const labelList& jList,
             scalar& beta
         );
-
-        // Map boundary condition fields
-        void mapBoundaryConditions(const mapPolyMesh&);
 
         // Update on topology change
         void update(const mapPolyMesh&);

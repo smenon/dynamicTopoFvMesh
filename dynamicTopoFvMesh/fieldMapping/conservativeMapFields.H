@@ -26,11 +26,83 @@ License
 
 #include "topoMapper.H"
 #include "topoCellMapper.H"
+#include "topoPointMapper.H"
 #include "topoSurfaceMapper.H"
 #include "topoBoundaryMeshMapper.H"
+#include "topoPointBoundaryMapper.H"
 
 namespace Foam
 {
+
+// Map all specified point fields
+template <class FieldType>
+void mapPointFields
+(
+    const topoMapper& mapper
+)
+{
+    // Local typedefs
+    typedef typename FieldType::InternalField InternalFieldType;
+    typedef typename FieldType::GeometricBoundaryField BoundaryFieldType;
+
+    // Fetch the list of registered fields
+    const List<FieldType*>& fieldList = mapper.pointFieldList<FieldType>();
+
+    forAll(fieldList, fieldI)
+    {
+        FieldType* field = fieldList[fieldI];
+
+        //if (fvMesh::debug)
+        {
+            Info<< "Mapping "
+                << field->typeName
+                << ' ' << field->name()
+                << endl;
+        }
+
+        // Fetch reference to fields
+        InternalFieldType& iField = field->internalField();
+        BoundaryFieldType& bField = field->boundaryField();
+
+        // Map internal field
+        const topoPointMapper& internalMapper = mapper.pointMap();
+
+        if (iField.size() == internalMapper.sizeBeforeMapping())
+        {
+            iField.autoMap(internalMapper);
+        }
+        else
+        {
+            FatalErrorIn("void topoMapper::mapPointFields()")
+                << "Incompatible size before mapping." << nl
+                << " Internal field size: " << iField.size() << nl
+                << " Map size: " << internalMapper.sizeBeforeMapping()
+                << abort(FatalError);
+        }
+
+        // Map boundary fields
+        const topoPointBoundaryMapper& boundaryMap = mapper.pointBoundaryMap();
+
+        forAll(bField, pI)
+        {
+            const topoPointPatchMapper& patchMapper = boundaryMap[pI];
+
+            if (bField[pI].size() == patchMapper.sizeBeforeMapping())
+            {
+                bField[pI].autoMap(patchMapper);
+            }
+            else
+            {
+                FatalErrorIn("void topoMapper::mapPointFields()")
+                    << "Incompatible size before mapping." << nl
+                    << " Boundary patch size: " << bField[pI].size() << nl
+                    << " Map size: " << patchMapper.sizeBeforeMapping()
+                    << abort(FatalError);
+            }
+        }
+    }
+}
+
 
 // Conservatively map all volFields in the registry
 template <class Type>

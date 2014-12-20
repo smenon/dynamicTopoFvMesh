@@ -23,7 +23,7 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    mesquiteInternalMapper
+    topoPointMapper
 
 Description
     This object provides mapping and fill-in information for internal
@@ -36,12 +36,12 @@ Author
     All rights reserved
 
 SourceFiles
-    mesquiteInternalMapper.C
+    topoPointMapper.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef mesquiteInternalMapper_H
-#define mesquiteInternalMapper_H
+#ifndef topoPointMapper_H
+#define topoPointMapper_H
 
 #include "morphFieldMapper.H"
 
@@ -52,14 +52,14 @@ namespace Foam
 
 // Class forward declarations
 class pointMesh;
+class topoMapper;
 class mapPolyMesh;
-class mesquiteMapper;
 
 /*---------------------------------------------------------------------------*\
-                    Class mesquiteInternalMapper Declaration
+                        Class topoPointMapper Declaration
 \*---------------------------------------------------------------------------*/
 
-class mesquiteInternalMapper
+class topoPointMapper
 :
     public morphFieldMapper
 {
@@ -68,8 +68,8 @@ class mesquiteInternalMapper
         //- Reference to mapPolyMesh
         const mapPolyMesh& mpm_;
 
-        //- Reference to the mesquiteMapper
-        const mesquiteMapper& tMapper_;
+        //- Reference to the topoMapper
+        const topoMapper& tMapper_;
 
         //- Is the mapping direct
         bool direct_;
@@ -94,10 +94,10 @@ class mesquiteInternalMapper
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
-        mesquiteInternalMapper(const mesquiteInternalMapper&);
+        topoPointMapper(const topoPointMapper&);
 
         //- Disallow default bitwise assignment
-        void operator=(const mesquiteInternalMapper&);
+        void operator=(const topoPointMapper&);
 
         //- Calculate addressing for interpolative mapping
         void calcAddressing() const;
@@ -113,16 +113,16 @@ public:
     // Constructors
 
         //- Construct from components
-        mesquiteInternalMapper
+        topoPointMapper
         (
             const pointMesh& mesh,
             const mapPolyMesh& mpm,
-            const mesquiteMapper& mapper
+            const topoMapper& mapper
         );
 
     // Destructor
 
-        virtual ~mesquiteInternalMapper();
+        virtual ~topoPointMapper();
 
     // Member Functions
 

@@ -40,7 +40,6 @@ License
 #include "pointPatchField.H"
 #include "pointMesh.H"
 #include "mapPolyMesh.H"
-#include "mesquiteMapper.H"
 
 #include "hexMatcher.H"
 #include "tetMatcher.H"
@@ -250,21 +249,51 @@ void mesquiteMotionSolver::readOptions()
     // for moving boundary conditions
     if (optionsDict.found("usePointDisplacement"))
     {
-        basePoints_.reset
-        (
-            new pointIOField
+        const pointMesh& pMesh = pointMesh::New(Mesh_);
+
+        // Check for existence of base points
+        IOobject baseIO("basePoints", Mesh_.time().timeName(), Mesh_);
+
+        if (baseIO.headerOk())
+        {
+            basePoints_.reset
             (
-                IOobject
+                new pointVectorField
                 (
-                    "basePoints",
-                    Mesh_.time().timeName(),
-                    Mesh_,
-                    IOobject::READ_IF_PRESENT,
-                    IOobject::AUTO_WRITE
-                ),
-                Mesh_.points()
-            )
-        );
+                    IOobject
+                    (
+                        "basePoints",
+                        Mesh_.time().timeName(),
+                        Mesh_,
+                        IOobject::MUST_READ,
+                        IOobject::AUTO_WRITE
+                    ),
+                    pMesh
+                )
+            );
+        }
+        else
+        {
+            basePoints_.reset
+            (
+                new pointVectorField
+                (
+                    IOobject
+                    (
+                        "basePoints",
+                        Mesh_.time().timeName(),
+                        Mesh_,
+                        IOobject::NO_READ,
+                        IOobject::AUTO_WRITE
+                    ),
+                    pMesh,
+                    dimensioned<vector>("0", dimLength, vector::zero)
+                )
+            );
+
+            // Initialize with mesh points
+            basePoints_().internalField() = Mesh_.points();
+        }
 
         boundaryConditions_.reset
         (
@@ -278,7 +307,7 @@ void mesquiteMotionSolver::readOptions()
                     IOobject::MUST_READ,
                     IOobject::AUTO_WRITE
                 ),
-                pointMesh::New(Mesh_)
+                pMesh
             )
         );
     }
@@ -4150,7 +4179,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         // Use the pointVectorField form of boundary conditions
         boundaryConditions_().correctBoundaryConditions();
 
-        const pointField& bP = basePoints_();
+        const pointField& bP = basePoints_().internalField();
         const pointField& iF = boundaryConditions_().internalField();
 
         forAll(refPoints_, pI)
@@ -5356,7 +5385,10 @@ void mesquiteMotionSolver::solve()
 
     if (boundaryConditions_.valid())
     {
-    	boundaryConditions_().internalField() = refPoints_ - basePoints_();
+        pointField& bpField = basePoints_().internalField();
+        pointField& bcField = boundaryConditions_().internalField();
+
+    	bcField = refPoints_ - bpField;
     }
 }
 
@@ -5377,66 +5409,6 @@ void mesquiteMotionSolver::movePoints(const pointField&)
 void mesquiteMotionSolver::updateMesh(const mapPolyMesh& mpm)
 {
     update(mpm);
-}
-
-
-//- Map boundary condition fields
-void mesquiteMotionSolver::mapBoundaryConditions(const mapPolyMesh& mpm)
-{
-    // Local typedefs
-    typedef typename pointVectorField::InternalField InternalFieldType;
-    typedef typename pointVectorField::GeometricBoundaryField BoundaryFieldType;
-
-    // Create a mapper
-    mesquiteMapper fieldMapper(pointMesh::New(Mesh_), mpm);
-
-    // Fetch reference to fields
-    InternalFieldType& bPoints = basePoints_();
-    InternalFieldType& iField = boundaryConditions_().internalField();
-    BoundaryFieldType& bField = boundaryConditions_().boundaryField();
-
-    // Map internal fields
-    const mesquiteInternalMapper& internalMapper = fieldMapper.internalMap();
-
-    if
-    (
-        (bPoints.size() == internalMapper.sizeBeforeMapping())
-     && (iField.size() == internalMapper.sizeBeforeMapping())
-    )
-    {
-        bPoints.autoMap(internalMapper);
-        iField.autoMap(internalMapper);
-    }
-    else
-    {
-        FatalErrorIn("void mesquiteMotionSolver::mapBoundaryConditions()")
-            << "Incompatible size before mapping." << nl
-            << " Base points field size: " << bPoints.size() << nl
-            << " Boundary Condition internal size: " << iField.size() << nl
-            << " Map size: " << internalMapper.sizeBeforeMapping()
-            << abort(FatalError);
-    }
-
-    // Map boundary fields
-    const mesquiteBoundaryMapper& boundaryMapper = fieldMapper.boundaryMap();
-
-    forAll(bField, pI)
-    {
-        const mesquitePatchMapper& patchMapper = boundaryMapper[pI];
-
-        if (bField[pI].size() == patchMapper.sizeBeforeMapping())
-        {
-            bField[pI].autoMap(patchMapper);
-        }
-        else
-        {
-            FatalErrorIn("void mesquiteMotionSolver::mapBoundaryConditions()")
-                << "Incompatible size before mapping." << nl
-                << " Boundary Condition patch size: " << bField[pI].size() << nl
-                << " Map size: " << patchMapper.sizeBeforeMapping()
-                << abort(FatalError);
-        }
-    }
 }
 
 
@@ -5483,11 +5455,8 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
     refPoints_.clear();
     refPoints_ = Mesh_.points();
 
-    // Map boundary conditions
-    if (boundaryConditions_.valid())
-    {
-        mapBoundaryConditions(mpm);
-    }
+    // Boundary conditions will be mapped automatically
+    // via the mesh registry
 
     // Clear the auxiliary maps / buffers
     procIndices_.clear();

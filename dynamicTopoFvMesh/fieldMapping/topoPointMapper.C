@@ -23,10 +23,10 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    mesquiteInternalMapper
+    topoPointMapper
 
 Description
-    Implementation of the mesquiteInternalMapper class
+    Implementation of the topoPointMapper class
 
 Author
     Sandeep Menon
@@ -35,10 +35,10 @@ Author
 
 \*---------------------------------------------------------------------------*/
 
+#include "topoMapper.H"
 #include "mapPolyMesh.H"
-#include "mesquiteMapper.H"
+#include "topoPointMapper.H"
 #include "demandDrivenData.H"
-#include "mesquiteInternalMapper.H"
 
 namespace Foam
 {
@@ -46,11 +46,11 @@ namespace Foam
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 //- Calculate addressing for interpolative mapping
-void mesquiteInternalMapper::calcAddressing() const
+void topoPointMapper::calcAddressing() const
 {
     if (directAddrPtr_ || interpolationAddrPtr_)
     {
-        FatalErrorIn("void mesquiteInternalMapper::calcAddressing() const")
+        FatalErrorIn("void topoPointMapper::calcAddressing() const")
             << "Addressing already calculated."
             << abort(FatalError);
     }
@@ -85,7 +85,7 @@ void mesquiteInternalMapper::calcAddressing() const
             {
                 FatalErrorIn
                 (
-                    "void mesquiteInternalMapper::calcAddressing() const"
+                    "void topoPointMapper::calcAddressing() const"
                 )
                     << "Master point " << pointI
                     << " mapped from points " << mo
@@ -123,7 +123,7 @@ void mesquiteInternalMapper::calcAddressing() const
 
     if (nInsertedPoints)
     {
-        FatalErrorIn("void mesquiteInternalMapper::calcAddressing() const")
+        FatalErrorIn("void topoPointMapper::calcAddressing() const")
             << " Found " << nInsertedPoints << " which are"
             << " not mapped from any parent points." << nl
             << " List: " << nl
@@ -134,11 +134,11 @@ void mesquiteInternalMapper::calcAddressing() const
 
 
 //- Calculate weights for interpolative mapping
-void mesquiteInternalMapper::calcWeights() const
+void topoPointMapper::calcWeights() const
 {
     if (weightsPtr_)
     {
-        FatalErrorIn("void mesquiteInternalMapper::calcWeights() const")
+        FatalErrorIn("void topoPointMapper::calcWeights() const")
             << "Weights already calculated."
             << abort(FatalError);
     }
@@ -163,7 +163,7 @@ void mesquiteInternalMapper::calcWeights() const
 
 
 //- Clear out local storage
-void mesquiteInternalMapper::clearOut()
+void topoPointMapper::clearOut()
 {
     deleteDemandDrivenData(directAddrPtr_);
     deleteDemandDrivenData(interpolationAddrPtr_);
@@ -175,11 +175,11 @@ void mesquiteInternalMapper::clearOut()
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 //- Construct from components
-mesquiteInternalMapper::mesquiteInternalMapper
+topoPointMapper::topoPointMapper
 (
     const pointMesh& mesh,
     const mapPolyMesh& mpm,
-    const mesquiteMapper& mapper
+    const topoMapper& mapper
 )
 :
     mpm_(mpm),
@@ -205,7 +205,7 @@ mesquiteInternalMapper::mesquiteInternalMapper
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
-mesquiteInternalMapper::~mesquiteInternalMapper()
+topoPointMapper::~topoPointMapper()
 {
     clearOut();
 }
@@ -214,42 +214,42 @@ mesquiteInternalMapper::~mesquiteInternalMapper()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 //- Return size
-label mesquiteInternalMapper::size() const
+label topoPointMapper::size() const
 {
     return mpm_.pointMap().size();
 }
 
 
 //- Return size before mapping
-label mesquiteInternalMapper::sizeBeforeMapping() const
+label topoPointMapper::sizeBeforeMapping() const
 {
     return sizeBeforeMapping_;
 }
 
 
 //- Is the mapping direct
-bool mesquiteInternalMapper::direct() const
+bool topoPointMapper::direct() const
 {
     return direct_;
 }
 
 
 //- Has unmapped elements
-bool mesquiteInternalMapper::hasUnmapped() const
+bool topoPointMapper::hasUnmapped() const
 {
     return false;
 }
 
 
 //- Return direct addressing
-const unallocLabelList& mesquiteInternalMapper::directAddressing() const
+const unallocLabelList& topoPointMapper::directAddressing() const
 {
     if (!direct())
     {
         FatalErrorIn
         (
             "const unallocLabelList& "
-            "mesquiteInternalMapper::directAddressing() const"
+            "topoPointMapper::directAddressing() const"
         )   << "Requested direct addressing for an interpolative mapper."
             << abort(FatalError);
     }
@@ -264,14 +264,14 @@ const unallocLabelList& mesquiteInternalMapper::directAddressing() const
 
 
 //- Return interpolation addressing
-const labelListList& mesquiteInternalMapper::addressing() const
+const labelListList& topoPointMapper::addressing() const
 {
     if (direct())
     {
         FatalErrorIn
         (
             "const labelListList& "
-            "mesquiteInternalMapper::addressing() const"
+            "topoPointMapper::addressing() const"
         )   << "Requested interpolative addressing for a direct mapper."
             << abort(FatalError);
     }
@@ -286,14 +286,14 @@ const labelListList& mesquiteInternalMapper::addressing() const
 
 
 //- Return weights
-const scalarListList& mesquiteInternalMapper::weights() const
+const scalarListList& topoPointMapper::weights() const
 {
     if (direct())
     {
         FatalErrorIn
         (
             "const scalarListList& "
-            "mesquiteInternalMapper::weights() const"
+            "topoPointMapper::weights() const"
         )   << "Requested interpolative weights for a direct mapper."
             << abort(FatalError);
     }
@@ -308,14 +308,14 @@ const scalarListList& mesquiteInternalMapper::weights() const
 
 
 //- Are there any inserted objects
-bool mesquiteInternalMapper::insertedObjects() const
+bool topoPointMapper::insertedObjects() const
 {
     return insertedObjectLabels().size();
 }
 
 
 //- Return list of inserted objects
-const labelList& mesquiteInternalMapper::insertedObjectLabels() const
+const labelList& topoPointMapper::insertedObjectLabels() const
 {
     if (!insertedPointLabelsPtr_)
     {
@@ -328,12 +328,12 @@ const labelList& mesquiteInternalMapper::insertedObjectLabels() const
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void mesquiteInternalMapper::operator=(const mesquiteInternalMapper& rhs)
+void topoPointMapper::operator=(const topoPointMapper& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)
     {
-        FatalErrorIn("void mesquiteInternalMapper::operator=")
+        FatalErrorIn("void topoPointMapper::operator=")
             << "Attempted assignment to self"
             << abort(FatalError);
     }

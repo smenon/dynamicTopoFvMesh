@@ -4629,6 +4629,10 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm)
         (fieldMapper);
     MapGeometricFields<tensor, fvsPatchField, topoMapper, surfaceMesh>
         (fieldMapper);
+
+    // Map all registered pointFields
+    mapPointFields<pointScalarField>(fieldMapper);
+    mapPointFields<pointVectorField>(fieldMapper);
 }
 
 

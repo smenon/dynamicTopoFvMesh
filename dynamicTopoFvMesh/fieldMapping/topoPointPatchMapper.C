@@ -23,10 +23,10 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    mesquitePatchMapper
+    topoPointPatchMapper
 
 Description
-    Implementation of the mesquitePatchMapper class
+    Implementation of the topoPointPatchMapper class
 
 Author
     Sandeep Menon
@@ -35,11 +35,11 @@ Author
 
 \*---------------------------------------------------------------------------*/
 
+#include "topoMapper.H"
 #include "mapPolyMesh.H"
 #include "facePointPatch.H"
-#include "mesquiteMapper.H"
 #include "demandDrivenData.H"
-#include "mesquitePatchMapper.H"
+#include "topoPointPatchMapper.H"
 
 namespace Foam
 {
@@ -47,13 +47,13 @@ namespace Foam
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
 //- Calculate the inserted point addressing list
-void mesquitePatchMapper::calcInsertedAddressing() const
+void topoPointPatchMapper::calcInsertedAddressing() const
 {
     if (insertedPointLabelsPtr_ || insertedPointAddressingPtr_)
     {
         FatalErrorIn
         (
-            "void mesquitePatchMapper::calcInsertedAddressing() const"
+            "void topoPointPatchMapper::calcInsertedAddressing() const"
         )   << " Inserted labels has already been calculated."
             << abort(FatalError);
     }
@@ -97,7 +97,7 @@ void mesquitePatchMapper::calcInsertedAddressing() const
         {
             FatalErrorIn
             (
-                "void mesquitePatchMapper::calcInsertedAddressing() const"
+                "void topoPointPatchMapper::calcInsertedAddressing() const"
             )   << " Mapping for inserted boundary point is incorrect."
                 << " Found an empty masterObjects list."
                 << nl << " Point: " << pIndex
@@ -125,7 +125,7 @@ void mesquitePatchMapper::calcInsertedAddressing() const
             {
                 FatalErrorIn
                 (
-                    "void mesquitePatchMapper::calcInsertedAddressing() const"
+                    "void topoPointPatchMapper::calcInsertedAddressing() const"
                 )   << " Mapping for inserted boundary point is incorrect."
                     << " Found an master point that doesn't belong to the patch"
                     << nl << " Point: " << pIndex
@@ -148,11 +148,11 @@ void mesquitePatchMapper::calcInsertedAddressing() const
 
 
 //- Calculate the patch mesh point map
-void mesquitePatchMapper::calcPatchMeshPointMap() const
+void topoPointPatchMapper::calcPatchMeshPointMap() const
 {
     if (patchMeshPointMapPtr_)
     {
-        FatalErrorIn("void mesquitePatchMapper::calcPatchMeshPointMap() const")
+        FatalErrorIn("void topoPointPatchMapper::calcPatchMeshPointMap() const")
             << "Mesh point map already calculated."
             << abort(FatalError);
     }
@@ -165,7 +165,7 @@ void mesquitePatchMapper::calcPatchMeshPointMap() const
     {
         FatalErrorIn
         (
-            "void mesquitePatchMapper::calcPatchMeshPointMap() const"
+            "void topoPointPatchMapper::calcPatchMeshPointMap() const"
         )   << " Failed to find old patch mesh points in the object registry."
             << nl << " The mesh is expected to register an object"
             << nl << " of type: " << labelListIOList::typeName
@@ -194,11 +194,11 @@ void mesquitePatchMapper::calcPatchMeshPointMap() const
 
 
 //- Calculate addressing for interpolative mapping
-void mesquitePatchMapper::calcAddressing() const
+void topoPointPatchMapper::calcAddressing() const
 {
     if (directAddrPtr_ || interpolationAddrPtr_)
     {
-        FatalErrorIn("void mesquitePatchMapper::calcAddressing() const")
+        FatalErrorIn("void topoPointPatchMapper::calcAddressing() const")
             << "Addressing already calculated."
             << abort(FatalError);
     }
@@ -230,7 +230,7 @@ void mesquitePatchMapper::calcAddressing() const
             {
                 FatalErrorIn
                 (
-                    "void mesquitePatchMapper::calcAddressing() const"
+                    "void topoPointPatchMapper::calcAddressing() const"
                 )   << " Mapping for inserted boundary point is incorrect."
                     << " Found a point which is not mapped from anything."
                     << nl << " Point: " << pointI
@@ -271,7 +271,7 @@ void mesquitePatchMapper::calcAddressing() const
                 {
                     FatalErrorIn
                     (
-                        "void mesquitePatchMapper::calcAddressing() const"
+                        "void topoPointPatchMapper::calcAddressing() const"
                     )
                         << "Master point " << pointI
                         << " to be mapped from: " << patchMap[pointI]
@@ -293,7 +293,7 @@ void mesquitePatchMapper::calcAddressing() const
 
     if (nUnmappedPoints)
     {
-        FatalErrorIn("void mesquitePatchMapper::calcAddressing() const")
+        FatalErrorIn("void topoPointPatchMapper::calcAddressing() const")
             << " Found " << nUnmappedPoints << " which are"
             << " not mapped from any parent points." << nl
             << " Patch: " << patch_.name() << nl
@@ -305,11 +305,11 @@ void mesquitePatchMapper::calcAddressing() const
 
 
 //- Calculate weights for interpolative mapping
-void mesquitePatchMapper::calcWeights() const
+void topoPointPatchMapper::calcWeights() const
 {
     if (weightsPtr_)
     {
-        FatalErrorIn("void mesquitePatchMapper::calcWeights() const")
+        FatalErrorIn("void topoPointPatchMapper::calcWeights() const")
             << "Weights already calculated."
             << abort(FatalError);
     }
@@ -334,7 +334,7 @@ void mesquitePatchMapper::calcWeights() const
 
 
 //- Clear out local storage
-void mesquitePatchMapper::clearOut()
+void topoPointPatchMapper::clearOut()
 {
     deleteDemandDrivenData(directAddrPtr_);
     deleteDemandDrivenData(interpolationAddrPtr_);
@@ -348,11 +348,11 @@ void mesquitePatchMapper::clearOut()
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 //- Construct from components
-mesquitePatchMapper::mesquitePatchMapper
+topoPointPatchMapper::topoPointPatchMapper
 (
     const pointPatch& patch,
     const mapPolyMesh& mpm,
-    const mesquiteMapper& mapper
+    const topoMapper& mapper
 )
 :
     patch_(refCast<const facePointPatch>(patch)),
@@ -385,7 +385,7 @@ mesquitePatchMapper::mesquitePatchMapper
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
-mesquitePatchMapper::~mesquitePatchMapper()
+topoPointPatchMapper::~topoPointPatchMapper()
 {
     clearOut();
 }
@@ -394,42 +394,42 @@ mesquitePatchMapper::~mesquitePatchMapper()
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 //- Return size
-label mesquitePatchMapper::size() const
+label topoPointPatchMapper::size() const
 {
     return patch_.size();
 }
 
 
 //- Return size before mapping
-label mesquitePatchMapper::sizeBeforeMapping() const
+label topoPointPatchMapper::sizeBeforeMapping() const
 {
     return sizeBeforeMapping_;
 }
 
 
 //- Is the mapping direct
-bool mesquitePatchMapper::direct() const
+bool topoPointPatchMapper::direct() const
 {
     return direct_;
 }
 
 
 //- Has unmapped elements
-bool mesquitePatchMapper::hasUnmapped() const
+bool topoPointPatchMapper::hasUnmapped() const
 {
     return false;
 }
 
 
 //- Return direct addressing
-const unallocLabelList& mesquitePatchMapper::directAddressing() const
+const unallocLabelList& topoPointPatchMapper::directAddressing() const
 {
     if (!direct())
     {
         FatalErrorIn
         (
             "const unallocLabelList& "
-            "mesquitePatchMapper::directAddressing() const"
+            "topoPointPatchMapper::directAddressing() const"
         )   << "Requested direct addressing for an interpolative mapper."
             << abort(FatalError);
     }
@@ -444,14 +444,14 @@ const unallocLabelList& mesquitePatchMapper::directAddressing() const
 
 
 //- Return interpolation addressing
-const labelListList& mesquitePatchMapper::addressing() const
+const labelListList& topoPointPatchMapper::addressing() const
 {
     if (direct())
     {
         FatalErrorIn
         (
             "const labelListList& "
-            "mesquitePatchMapper::addressing() const"
+            "topoPointPatchMapper::addressing() const"
         )   << "Requested interpolative addressing for a direct mapper."
             << abort(FatalError);
     }
@@ -466,14 +466,14 @@ const labelListList& mesquitePatchMapper::addressing() const
 
 
 //- Return weights
-const scalarListList& mesquitePatchMapper::weights() const
+const scalarListList& topoPointPatchMapper::weights() const
 {
     if (direct())
     {
         FatalErrorIn
         (
             "const scalarListList& "
-            "mesquitePatchMapper::weights() const"
+            "topoPointPatchMapper::weights() const"
         )   << "Requested interpolative weights for a direct mapper."
             << abort(FatalError);
     }
@@ -488,14 +488,14 @@ const scalarListList& mesquitePatchMapper::weights() const
 
 
 //- Are there any inserted objects
-bool mesquitePatchMapper::insertedObjects() const
+bool topoPointPatchMapper::insertedObjects() const
 {
     return insertedObjectLabels().size();
 }
 
 
 //- Return list of inserted objects
-const labelList& mesquitePatchMapper::insertedObjectLabels() const
+const labelList& topoPointPatchMapper::insertedObjectLabels() const
 {
     if (!insertedPointLabelsPtr_)
     {
@@ -507,7 +507,7 @@ const labelList& mesquitePatchMapper::insertedObjectLabels() const
 
 
 //- Return addressing for inserted points
-const labelListList& mesquitePatchMapper::insertedPointAddressing() const
+const labelListList& topoPointPatchMapper::insertedPointAddressing() const
 {
     if (!insertedPointAddressingPtr_)
     {
@@ -519,7 +519,7 @@ const labelListList& mesquitePatchMapper::insertedPointAddressing() const
 
 
 //- Return the patch mesh point map
-const Map<label>& mesquitePatchMapper::patchMeshPointMap() const
+const Map<label>& topoPointPatchMapper::patchMeshPointMap() const
 {
     if (!patchMeshPointMapPtr_)
     {
@@ -532,12 +532,12 @@ const Map<label>& mesquitePatchMapper::patchMeshPointMap() const
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
 
-void mesquitePatchMapper::operator=(const mesquitePatchMapper& rhs)
+void topoPointPatchMapper::operator=(const topoPointPatchMapper& rhs)
 {
     // Check for assignment to self
     if (this == &rhs)
     {
-        FatalErrorIn("void mesquitePatchMapper::operator=")
+        FatalErrorIn("void topoPointPatchMapper::operator=")
             << "Attempted assignment to self"
             << abort(FatalError);
     }

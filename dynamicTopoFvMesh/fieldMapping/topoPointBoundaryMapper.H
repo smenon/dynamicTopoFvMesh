@@ -23,7 +23,7 @@ License
     Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
 
 Class
-    mesquiteBoundaryMapper
+    topoPointBoundaryMapper
 
 Description
     This object provides mapping and fill-in information for boundary
@@ -37,12 +37,12 @@ Author
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef mesquiteBoundaryMapper_H
-#define mesquiteBoundaryMapper_H
+#ifndef topoPointBoundaryMapper_H
+#define topoPointBoundaryMapper_H
 
 #include "PtrList.H"
 #include "pointMesh.H"
-#include "mesquitePatchMapper.H"
+#include "topoPointPatchMapper.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -50,34 +50,34 @@ namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-                    Class mesquiteBoundaryMapper Declaration
+                    Class topoPointBoundaryMapper Declaration
 \*---------------------------------------------------------------------------*/
 
-class mesquiteBoundaryMapper
+class topoPointBoundaryMapper
 :
-    public PtrList<mesquitePatchMapper>
+    public PtrList<topoPointPatchMapper>
 {
     // Private Member Functions
 
         //- Disallow default bitwise copy construct
-        mesquiteBoundaryMapper(const mesquiteBoundaryMapper&);
+        topoPointBoundaryMapper(const topoPointBoundaryMapper&);
 
         //- Disallow default bitwise assignment
-        void operator=(const mesquiteBoundaryMapper&);
+        void operator=(const topoPointBoundaryMapper&);
 
 public:
 
     // Constructors
 
         //- Construct from components
-        mesquiteBoundaryMapper
+        topoPointBoundaryMapper
         (
             const pointMesh& mesh,
             const mapPolyMesh& mpm,
-            const mesquiteMapper& mapper
+            const topoMapper& mapper
         )
         :
-            PtrList<mesquitePatchMapper>(mesh.boundary().size())
+            PtrList<topoPointPatchMapper>(mesh.boundary().size())
         {
             const pointBoundaryMesh& patches = mesh.boundary();
 
@@ -86,7 +86,7 @@ public:
                 set
                 (
                     patchI,
-                    new mesquitePatchMapper
+                    new topoPointPatchMapper
                     (
                         patches[patchI],
                         mpm,
