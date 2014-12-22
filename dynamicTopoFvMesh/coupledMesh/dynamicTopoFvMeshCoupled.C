@@ -8153,27 +8153,58 @@ void dynamicTopoFvMesh::resetBoundaries()
 {                                                                              \
     {                                                                          \
         scalar zeroValue = pTraits<scalar>::zero;                              \
-        info.send<type##ScalarField>                                           \
+        info.sendFields<type##ScalarField>                                     \
         (names[0 + offset], types[0 + offset], zeroValue, map, stream);        \
     }                                                                          \
     {                                                                          \
         vector zeroValue = pTraits<vector>::zero;                              \
-        info.send<type##VectorField>                                           \
+        info.sendFields<type##VectorField>                                     \
         (names[1 + offset], types[1 + offset], zeroValue, map, stream);        \
     }                                                                          \
     {                                                                          \
         sphericalTensor zeroValue = pTraits<sphericalTensor>::zero;            \
-        info.send<type##SphericalTensorField>                                  \
+        info.sendFields<type##SphericalTensorField>                            \
         (names[2 + offset], types[2 + offset], zeroValue, map, stream);        \
     }                                                                          \
     {                                                                          \
         symmTensor zeroValue = pTraits<symmTensor>::zero;                      \
-        info.send<type##SymmTensorField>                                       \
+        info.sendFields<type##SymmTensorField>                                 \
         (names[3 + offset], types[3 + offset], zeroValue, map, stream);        \
     }                                                                          \
     {                                                                          \
         tensor zeroValue = pTraits<tensor>::zero;                              \
-        info.send<type##TensorField>                                           \
+        info.sendFields<type##TensorField>                                     \
+        (names[4 + offset], types[4 + offset], zeroValue, map, stream);        \
+    }                                                                          \
+}
+
+
+// Convenience macro for point field sub-setting
+#define sendPointFieldsOfType(info, names, types, offset, map, stream)         \
+{                                                                              \
+    {                                                                          \
+        scalar zeroValue = pTraits<scalar>::zero;                              \
+        info.sendPointFields<pointScalarField>                                 \
+        (names[0 + offset], types[0 + offset], zeroValue, map, stream);        \
+    }                                                                          \
+    {                                                                          \
+        vector zeroValue = pTraits<vector>::zero;                              \
+        info.sendPointFields<pointVectorField>                                 \
+        (names[1 + offset], types[1 + offset], zeroValue, map, stream);        \
+    }                                                                          \
+    {                                                                          \
+        sphericalTensor zeroValue = pTraits<sphericalTensor>::zero;            \
+        info.sendPointFields<pointSphericalTensorField>                        \
+        (names[2 + offset], types[2 + offset], zeroValue, map, stream);        \
+    }                                                                          \
+    {                                                                          \
+        symmTensor zeroValue = pTraits<symmTensor>::zero;                      \
+        info.sendPointFields<pointSymmTensorField>                             \
+        (names[3 + offset], types[3 + offset], zeroValue, map, stream);        \
+    }                                                                          \
+    {                                                                          \
+        tensor zeroValue = pTraits<tensor>::zero;                              \
+        info.sendPointFields<pointTensorField>                                 \
         (names[4 + offset], types[4 + offset], zeroValue, map, stream);        \
     }                                                                          \
 }
@@ -8207,8 +8238,9 @@ void dynamicTopoFvMesh::initFieldTransfers
     // Size up wordLists
     //  - Five templated volFields
     //  - Five templated surfaceFields
-    names.setSize(10);
-    types.setSize(10);
+    //  - Five templated pointFields
+    names.setSize(15);
+    types.setSize(15);
 
     // Fill in field-types
     types[0] = volScalarField::typeName;
@@ -8223,18 +8255,18 @@ void dynamicTopoFvMesh::initFieldTransfers
     types[8] = surfaceSymmTensorField::typeName;
     types[9] = surfaceTensorField::typeName;
 
+    types[10] = pointScalarField::typeName;
+    types[11] = pointVectorField::typeName;
+    types[12] = pointSphericalTensorField::typeName;
+    types[13] = pointSymmTensorField::typeName;
+    types[14] = pointTensorField::typeName;
+
     // Send / recv buffers for field names
     List<char> fieldNameSendBuffer, fieldNameRecvBuffer;
 
     if (Pstream::master())
     {
-        PtrList<OStringStream> fieldNameStream(1);
-
-        // Set the stream
-        fieldNameStream.set(0, new OStringStream(IOstream::BINARY));
-
-        // Alias for convenience
-        OStringStream& fNStream = fieldNameStream[0];
+        OStringStream fieldNameStream(IOstream::BINARY);
 
         // Fetch field-names by type
         forAll(types, typeI)
@@ -8244,10 +8276,10 @@ void dynamicTopoFvMesh::initFieldTransfers
         }
 
         // Send field names to Ostream
-        fNStream << names;
+        fieldNameStream << names;
 
         // Size up buffers and fill contents
-        string contents = fNStream.str();
+        string contents = fieldNameStream.str();
         const char* ptr = contents.data();
 
         fieldNameSendBuffer.setSize(contents.size());
@@ -8256,9 +8288,6 @@ void dynamicTopoFvMesh::initFieldTransfers
         {
             fieldNameSendBuffer[i] = *ptr++;
         }
-
-        // Clear the stream
-        fieldNameStream.set(0, NULL);
 
         if (debug > 4)
         {
@@ -8331,6 +8360,11 @@ void dynamicTopoFvMesh::initFieldTransfers
         const labelList& fMap = cInfo.map().internalFaceMap();
 
         sendFieldsOfType(surface, cInfo, names, types, 5, fMap, stream[pI]);
+
+        // Subset and send pointFields to stream
+        const labelList& pMap = cInfo.map().pointMap();
+
+        sendPointFieldsOfType(cInfo, names, types, 10, pMap, stream[pI]);
 
         // Size up buffers and fill contents
         string contents = stream[pI].str();
@@ -8408,6 +8442,13 @@ void dynamicTopoFvMesh::syncFieldTransfers
     List<PtrList<surfaceSymmTensorField> > ssytF(nProcs);
     List<PtrList<surfaceTensorField> > stF(nProcs);
 
+    // Point fields
+    List<PtrList<pointScalarField> > psF(nProcs);
+    List<PtrList<pointVectorField> > pvF(nProcs);
+    List<PtrList<pointSphericalTensorField> > psptF(nProcs);
+    List<PtrList<pointSymmTensorField> > psytF(nProcs);
+    List<PtrList<pointTensorField> > ptF(nProcs);
+
     const polyBoundaryMesh& polyBoundary = boundaryMesh();
 
     // Determine number of physical (non-processor) patches
@@ -8424,11 +8465,13 @@ void dynamicTopoFvMesh::syncFieldTransfers
     }
 
     // Keep track of extra / total entities
-    label nTotalCells = nOldCells_, nTotalIntFaces = nOldInternalFaces_;
+    label nTotalCells = nOldCells_;
+    label nTotalPoints = nOldPoints_;
+    label nTotalIntFaces = nOldInternalFaces_;
     labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhysical));
 
     // Allocate reverse maps
-    List<labelList> irvMaps(nProcs), irsMaps(nProcs);
+    List<labelList> irvMaps(nProcs), irpMaps(nProcs), irsMaps(nProcs);
     List<labelListList> brMaps(nProcs, labelListList(nPhysical));
 
     forAll(procIndices_, pI)
@@ -8464,11 +8507,22 @@ void dynamicTopoFvMesh::syncFieldTransfers
         cInfo.setField(names[8], dict.subDict(types[8]), nIntFaces, ssytF[pI]);
         cInfo.setField(names[9], dict.subDict(types[9]), nIntFaces, stF[pI]);
 
+        // Set point field pointers
+        label nP = cMap.nEntities(coupleMap::POINT);
+
+        cInfo.setPointField(names[10], dict.subDict(types[10]), nP, psF[pI]);
+        cInfo.setPointField(names[11], dict.subDict(types[11]), nP, pvF[pI]);
+        cInfo.setPointField(names[12], dict.subDict(types[12]), nP, psptF[pI]);
+        cInfo.setPointField(names[13], dict.subDict(types[13]), nP, psytF[pI]);
+        cInfo.setPointField(names[14], dict.subDict(types[14]), nP, ptF[pI]);
+
         // Set rmap for this processor
+        irpMaps[pI] = (labelField(identity(nP)) + nTotalPoints);
         irvMaps[pI] = (labelField(identity(nCells)) + nTotalCells);
         irsMaps[pI] = (labelField(identity(nIntFaces)) + nTotalIntFaces);
 
         // Update count
+        nTotalPoints += nP;
         nTotalCells += nCells;
         nTotalIntFaces += nIntFaces;
 

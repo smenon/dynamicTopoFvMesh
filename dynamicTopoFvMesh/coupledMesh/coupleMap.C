@@ -233,6 +233,30 @@ void coupleMap::makeFaces() const
 }
 
 
+void coupleMap::makePointMap() const
+{
+    // It is an error to attempt to recalculate
+    // if the map is already calculated
+    if (pointMap_.size())
+    {
+        FatalErrorIn("void coupleMap::makePointMap() const")
+            << "pointMap has already been calculated."
+            << abort(FatalError);
+    }
+
+    const Map<label>& mapPoints = entityMap(coupleMap::POINT);
+
+    // Size the list
+    pointMap_.setSize(mapPoints.size(), -1);
+
+    // Fill-in entries
+    forAllConstIter(Map<label>, mapPoints, pIter)
+    {
+        pointMap_[pIter.key()] = pIter();
+    }
+}
+
+
 void coupleMap::makeFaceMap() const
 {
     // It is an error to attempt to recalculate
@@ -628,6 +652,17 @@ const labelListList& coupleMap::faceEdges() const
     }
 
     return *faceEdgesPtr_;
+}
+
+
+const labelList& coupleMap::pointMap() const
+{
+    if (pointMap_.empty())
+    {
+        makePointMap();
+    }
+
+    return pointMap_;
 }
 
 

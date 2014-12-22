@@ -25,8 +25,12 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "Time.H"
+#include "pointMesh.H"
 #include "coupledInfo.H"
 #include "emptyPolyPatch.H"
+#include "fvPatchFieldMapper.H"
+#include "pointPatchFieldMapper.H"
+
 #include "processorPolyPatch.H"
 #include "fixedValueFvPatchFields.H"
 
@@ -35,6 +39,142 @@ License
 
 namespace Foam
 {
+
+// * * * * * * * * * * * * * * * * Sub-classes * * * * * * * * * * * * * * * //
+
+//- Generic subMesh mapper
+template <class MeshType>
+class coupledInfo<MeshType>::subMeshMapper
+:
+    public fvPatchFieldMapper
+{
+    label sizeBeforeMapping_;
+
+    labelField directAddressing_;
+
+public:
+
+    // Constructors
+
+        //- Construct from components
+        inline subMeshMapper
+        (
+            const label sbm,
+            const labelList& da
+        )
+        :
+            sizeBeforeMapping_(sbm),
+            directAddressing_(da)
+        {}
+
+        //- Construct given addressing
+        inline subMeshMapper
+        (
+            const coupledInfo& cInfo,
+            const label patchI
+        );
+
+    // Destructor
+
+        virtual ~subMeshMapper()
+        {}
+
+    // Member Functions
+
+        label size() const
+        {
+            return directAddressing_.size();
+        }
+
+        label sizeBeforeMapping() const
+        {
+            return sizeBeforeMapping_;
+        }
+
+        bool direct() const
+        {
+            return true;
+        }
+
+        const unallocLabelList& directAddressing() const
+        {
+            return directAddressing_;
+        }
+
+        //- Has unmapped elements
+        virtual bool hasUnmapped() const
+        {
+            return false;
+        }
+};
+
+
+//- Generic subMesh point mapper
+template <class MeshType>
+class coupledInfo<MeshType>::subMeshPointMapper
+:
+    public pointPatchFieldMapper
+{
+    label sizeBeforeMapping_;
+
+    labelField directAddressing_;
+
+public:
+
+    // Constructors
+
+        //- Construct from components
+        inline subMeshPointMapper
+        (
+            const label sbm,
+            const labelList& da
+        )
+        :
+            sizeBeforeMapping_(sbm),
+            directAddressing_(da)
+        {}
+
+        //- Construct given addressing
+        inline subMeshPointMapper
+        (
+            const coupledInfo& cInfo,
+            const label patchI
+        );
+
+    // Destructor
+
+        virtual ~subMeshPointMapper()
+        {}
+
+    // Member Functions
+
+        label size() const
+        {
+            return directAddressing_.size();
+        }
+
+        label sizeBeforeMapping() const
+        {
+            return sizeBeforeMapping_;
+        }
+
+        bool direct() const
+        {
+            return true;
+        }
+
+        const unallocLabelList& directAddressing() const
+        {
+            return directAddressing_;
+        }
+
+        //- Has unmapped elements
+        virtual bool hasUnmapped() const
+        {
+            return false;
+        }
+};
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -127,6 +267,19 @@ coupledInfo<MeshType>::subMeshMapper::subMeshMapper
     {
         directAddressing_[faceI] -= pStart;
     }
+}
+
+
+//- Construct given addressing
+template <class MeshType>
+coupledInfo<MeshType>::subMeshPointMapper::subMeshPointMapper
+(
+    const coupledInfo& cInfo,
+    const label patchI
+)
+:
+    sizeBeforeMapping_(cInfo.baseMesh().boundary()[patchI].patch().nPoints())
+{
 }
 
 
@@ -281,6 +434,148 @@ label coupledInfo<MeshType>::slaveFaceZone() const
 }
 
 
+// Subset point field
+template <class MeshType>
+template <class GeomField, class ZeroType>
+tmp<GeomField>
+coupledInfo<MeshType>::subSetPointField
+(
+    const GeomField& f,
+    const ZeroType& zeroValue,
+    const labelList& mapper
+) const
+{
+    typedef typename GeomField::InternalField InternalField;
+    typedef typename GeomField::PatchFieldType PatchFieldType;
+    typedef typename GeomField::GeometricBoundaryField GeomBdyFieldType;
+    typedef typename GeomField::DimensionedInternalField DimInternalField;
+
+    // Fetch the reference to the pointMesh
+    const pointMesh& pMesh = pointMesh::New(subMesh());
+
+    // Create and map the internal-field values
+    InternalField internalField(f.internalField(), mapper);
+
+    // Create and map the patch field values
+    label nPatches = pMesh.boundary().size();
+    PtrList<PatchFieldType> patchFields(nPatches);
+
+    // Define patch type names, assumed to be
+    // common for point / volume / surface fields
+    word emptyType(emptyPolyPatch::typeName);
+    word processorType(processorPolyPatch::typeName);
+
+    // Create dummy types for initial field creation
+    forAll(patchFields, patchI)
+    {
+        if (patchI == (nPatches - 1))
+        {
+            // Artificially set last patch
+            patchFields.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    emptyType,
+                    pMesh.boundary()[patchI],
+                    DimInternalField::null()
+                )
+            );
+        }
+        else
+        {
+            patchFields.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    PatchFieldType::calculatedType(),
+                    pMesh.boundary()[patchI],
+                    DimInternalField::null()
+                )
+            );
+        }
+    }
+
+    // Create new field from pieces
+    tmp<GeomField> subFld
+    (
+        new GeomField
+        (
+            IOobject
+            (
+                "subField_" + f.name(),
+                subMesh().time().timeName(),
+                subMesh(),
+                IOobject::NO_READ,
+                IOobject::NO_WRITE,
+                false
+            ),
+            pMesh,
+            f.dimensions(),
+            internalField,
+            patchFields
+        )
+    );
+
+    // Set correct references for patch internal fields,
+    // and map values from the supplied geometric field
+    GeomBdyFieldType& bf = subFld().boundaryField();
+
+    forAll(bf, patchI)
+    {
+        if (patchI == (nPatches - 1))
+        {
+            // Artificially set last patch
+            bf.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    emptyType,
+                    pMesh.boundary()[patchI],
+                    subFld().dimensionedInternalField()
+                )
+            );
+        }
+        else
+        if (isA<processorPolyPatch>(subMesh().boundary()[patchI].patch()))
+        {
+            bf.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    processorType,
+                    pMesh.boundary()[patchI],
+                    subFld().dimensionedInternalField()
+                )
+            );
+
+            // Avoid dealing with uninitialised values
+            // by artificially assigning to zero
+            bf[patchI] == zeroValue;
+        }
+        else
+        {
+            bf.set
+            (
+                patchI,
+                PatchFieldType::New
+                (
+                    f.boundaryField()[patchI],
+                    pMesh.boundary()[patchI],
+                    subFld().dimensionedInternalField(),
+                    subMeshPointMapper(*this, patchI)
+                )
+            );
+        }
+    }
+
+    return subFld;
+}
+
+
 // Subset geometric field
 template <class MeshType>
 template <class GeomField, class ZeroType>
@@ -289,7 +584,7 @@ coupledInfo<MeshType>::subSetField
 (
     const GeomField& f,
     const ZeroType& zeroValue,
-    const labelList& internalMapper
+    const labelList& mapper
 ) const
 {
     typedef typename GeomField::InternalField InternalField;
@@ -298,14 +593,14 @@ coupledInfo<MeshType>::subSetField
     typedef typename GeomField::DimensionedInternalField DimInternalField;
 
     // Create and map the internal-field values
-    InternalField internalField(f.internalField(), internalMapper);
+    InternalField internalField(f.internalField(), mapper);
 
     // Create and map the patch field values
     label nPatches = subMesh().boundary().size();
     PtrList<PatchFieldType> patchFields(nPatches);
 
     // Define patch type names, assumed to be
-    // common for volume and surface fields
+    // common for point / volume / surface fields
     word emptyType(emptyPolyPatch::typeName);
     word processorType(processorPolyPatch::typeName);
 
@@ -420,15 +715,15 @@ coupledInfo<MeshType>::subSetField
 }
 
 
-// Subset geometric fields from registry to output stream
+// Subset point fields from registry to output stream
 template <class MeshType>
 template <class GeomField, class ZeroType>
-void coupledInfo<MeshType>::send
+void coupledInfo<MeshType>::sendPointFields
 (
     const wordList& fieldNames,
     const word& fieldType,
     const ZeroType& zeroValue,
-    const labelList& internalMapper,
+    const labelList& mapper,
     OSstream& strStream
 ) const
 {
@@ -444,7 +739,7 @@ void coupledInfo<MeshType>::send
         const GeomField& fld = db.lookupObject<GeomField>(fieldNames[i]);
 
         // Subset the field
-        tmp<GeomField> tsubFld = subSetField(fld, zeroValue, internalMapper);
+        tmp<GeomField> tsubFld = subSetPointField(fld, zeroValue, mapper);
 
         // Send field subset through stream
         strStream
@@ -457,6 +752,207 @@ void coupledInfo<MeshType>::send
 
     strStream
         << token::END_BLOCK << token::NL;
+}
+
+
+// Subset geometric fields from registry to output stream
+template <class MeshType>
+template <class GeomField, class ZeroType>
+void coupledInfo<MeshType>::sendFields
+(
+    const wordList& fieldNames,
+    const word& fieldType,
+    const ZeroType& zeroValue,
+    const labelList& mapper,
+    OSstream& strStream
+) const
+{
+    strStream
+        << fieldType << token::NL
+        << token::BEGIN_BLOCK << token::NL;
+
+    forAll(fieldNames, i)
+    {
+        // Fetch object from registry
+        const objectRegistry& db = mesh_.thisDb();
+
+        const GeomField& fld = db.lookupObject<GeomField>(fieldNames[i]);
+
+        // Subset the field
+        tmp<GeomField> tsubFld = subSetField(fld, zeroValue, mapper);
+
+        // Send field subset through stream
+        strStream
+            << fieldNames[i]
+            << token::NL << token::BEGIN_BLOCK
+            << tsubFld
+            << token::NL << token::END_BLOCK
+            << token::NL;
+    }
+
+    strStream
+        << token::END_BLOCK << token::NL;
+}
+
+
+// Set point field pointers from input dictionary
+template <class MeshType>
+template <class GeomField>
+void coupledInfo<MeshType>::setPointField
+(
+    const wordList& fieldNames,
+    const dictionary& fieldDicts,
+    const label internalSize,
+    PtrList<GeomField>& fields
+) const
+{
+    typedef typename GeomField::InternalField InternalField;
+    typedef typename GeomField::PatchFieldType PatchFieldType;
+    typedef typename GeomField::GeometricBoundaryField GeomBdyFieldType;
+    typedef typename GeomField::DimensionedInternalField DimInternalField;
+
+    // Fetch the reference to the pointMesh
+    const pointMesh& pMesh = pointMesh::New(subMesh());
+
+    // Size up the pointer list
+    fields.setSize(fieldNames.size());
+
+    // Define patch type names, assumed to be
+    // common for point / volume / surface fields
+    word emptyType(emptyPolyPatch::typeName);
+    word processorType(processorPolyPatch::typeName);
+
+    forAll(fieldNames, i)
+    {
+        // Create and map the patch field values
+        label nPatches = pMesh.boundary().size();
+
+        // Create field parts
+        PtrList<PatchFieldType> patchFields(nPatches);
+
+        // Read dimensions
+        dimensionSet dimSet
+        (
+            fieldDicts.subDict(fieldNames[i]).lookup("dimensions")
+        );
+
+        // Read the internal field
+        InternalField internalField
+        (
+            "internalField",
+            fieldDicts.subDict(fieldNames[i]),
+            internalSize
+        );
+
+        // Create dummy types for initial field creation
+        forAll(patchFields, patchI)
+        {
+            if (patchI == (nPatches - 1))
+            {
+                // Artificially set last patch
+                patchFields.set
+                (
+                    patchI,
+                    PatchFieldType::New
+                    (
+                        emptyType,
+                        pMesh.boundary()[patchI],
+                        DimInternalField::null()
+                    )
+                );
+            }
+            else
+            {
+                patchFields.set
+                (
+                    patchI,
+                    PatchFieldType::New
+                    (
+                        PatchFieldType::calculatedType(),
+                        pMesh.boundary()[patchI],
+                        DimInternalField::null()
+                    )
+                );
+            }
+        }
+
+        // Create field with dummy patches
+        fields.set
+        (
+            i,
+            new GeomField
+            (
+                IOobject
+                (
+                    fieldNames[i],
+                    subMesh().time().timeName(),
+                    subMesh(),
+                    IOobject::NO_READ,
+                    IOobject::NO_WRITE,
+                    false
+                ),
+                pMesh,
+                dimSet,
+                internalField,
+                patchFields
+            )
+        );
+
+        // Set correct references for patch internal fields,
+        // and fetch values from the supplied geometric field dictionaries
+        GeomBdyFieldType& bf = fields[i].boundaryField();
+
+        forAll(bf, patchI)
+        {
+            if (patchI == (nPatches - 1))
+            {
+                // Artificially set last patch
+                bf.set
+                (
+                    patchI,
+                    PatchFieldType::New
+                    (
+                        emptyType,
+                        pMesh.boundary()[patchI],
+                        fields[i].dimensionedInternalField()
+                    )
+                );
+            }
+            else
+            if (isA<processorPolyPatch>(subMesh().boundary()[patchI].patch()))
+            {
+                bf.set
+                (
+                    patchI,
+                    PatchFieldType::New
+                    (
+                        processorType,
+                        pMesh.boundary()[patchI],
+                        fields[i].dimensionedInternalField()
+                    )
+                );
+            }
+            else
+            {
+                bf.set
+                (
+                    patchI,
+                    PatchFieldType::New
+                    (
+                        pMesh.boundary()[patchI],
+                        fields[i].dimensionedInternalField(),
+                        fieldDicts.subDict
+                        (
+                            fieldNames[i]
+                        ).subDict("boundaryField").subDict
+                        (
+                            pMesh.boundary()[patchI].name()
+                        )
+                    )
+                );
+            }
+        }
+    }
 }
 
 
@@ -480,7 +976,7 @@ void coupledInfo<MeshType>::setField
     fields.setSize(fieldNames.size());
 
     // Define patch type names, assumed to be
-    // common for volume and surface fields
+    // common for point / volume / surface fields
     word emptyType(emptyPolyPatch::typeName);
     word processorType(processorPolyPatch::typeName);
 

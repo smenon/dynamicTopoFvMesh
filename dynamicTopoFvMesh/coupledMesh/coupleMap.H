@@ -169,6 +169,7 @@ private:
         mutable pointField moveOldPoints_;
 
         // Addressing for field mapping
+        mutable labelList pointMap_;
         mutable labelList faceMap_;
         mutable labelList cellMap_;
         mutable labelList internalFaceMap_;
@@ -187,6 +188,7 @@ private:
         void makeEdges() const;
         void makeFaces() const;
 
+        void makePointMap() const;
         void makeFaceMap() const;
         void makeCellMap() const;
         void makeInternalFaceMap() const;
@@ -380,6 +382,7 @@ public:
         const faceList& faces() const;
         const labelListList& faceEdges() const;
 
+        const labelList& pointMap() const;
         const labelList& faceMap() const;
         const labelList& cellMap() const;
         const labelList& internalFaceMap() const;

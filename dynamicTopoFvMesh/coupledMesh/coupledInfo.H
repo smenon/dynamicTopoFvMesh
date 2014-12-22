@@ -44,7 +44,6 @@ SourceFiles
 #include "autoPtr.H"
 #include "coupleMap.H"
 #include "volFieldsFwd.H"
-#include "fvPatchFieldMapper.H"
 
 namespace Foam
 {
@@ -93,6 +92,11 @@ class coupledInfo
         inline void operator=(const coupledInfo&);
 
 public:
+
+    //- Forward declarations
+
+        class subMeshMapper;
+        class subMeshPointMapper;
 
     //- Constructors
 
@@ -165,70 +169,15 @@ public:
 
     //- Interpolation
 
-        //- Generic subMesh mapper
-        class subMeshMapper
-        :
-            public fvPatchFieldMapper
-        {
-            label sizeBeforeMapping_;
-
-            labelField directAddressing_;
-
-        public:
-
-            // Constructors
-
-                //- Construct from components
-                inline subMeshMapper
-                (
-                    const label sbm,
-                    const labelList& da
-                )
-                :
-                    sizeBeforeMapping_(sbm),
-                    directAddressing_(da)
-                {}
-
-                //- Construct given addressing
-                inline subMeshMapper
-                (
-                    const coupledInfo& cInfo,
-                    const label patchI
-                );
-
-            // Destructor
-
-                virtual ~subMeshMapper()
-                {}
-
-            // Member Functions
-
-                label size() const
-                {
-                    return directAddressing_.size();
-                }
-
-                label sizeBeforeMapping() const
-                {
-                    return sizeBeforeMapping_;
-                }
-
-                bool direct() const
-                {
-                    return true;
-                }
-
-                const unallocLabelList& directAddressing() const
-                {
-                    return directAddressing_;
-                }
-
-                //- Has unmapped elements
-                virtual bool hasUnmapped() const
-                {
-                    return false;
-                }
-        };
+        // Subset point field
+        template <class GeomField, class ZeroType>
+        tmp<GeomField>
+        subSetPointField
+        (
+            const GeomField& f,
+            const ZeroType& zeroValue,
+            const labelList& mapper
+        ) const;
 
         // Subset geometric field
         template <class GeomField, class ZeroType>
@@ -237,18 +186,39 @@ public:
         (
             const GeomField& f,
             const ZeroType& zeroValue,
-            const labelList& internalMapper
+            const labelList& mapper
         ) const;
 
-        // Subset geometric fields from registry to output stream
+        // Subset point fields from registry to output stream
         template <class GeomField, class ZeroType>
-        void send
+        void sendPointFields
         (
             const wordList& fieldNames,
             const word& fieldType,
             const ZeroType& zeroValue,
-            const labelList& internalMapper,
+            const labelList& mapper,
             OSstream& strStream
+        ) const;
+
+        // Subset geometric fields from registry to output stream
+        template <class GeomField, class ZeroType>
+        void sendFields
+        (
+            const wordList& fieldNames,
+            const word& fieldType,
+            const ZeroType& zeroValue,
+            const labelList& mapper,
+            OSstream& strStream
+        ) const;
+
+        // Set point field pointers from input dictionary
+        template <class GeomField>
+        void setPointField
+        (
+            const wordList& fieldNames,
+            const dictionary& fieldDicts,
+            const label internalSize,
+            PtrList<GeomField>& fields
         ) const;
 
         // Set geometric field pointers from input dictionary
