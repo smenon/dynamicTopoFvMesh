@@ -8332,6 +8332,43 @@ void dynamicTopoFvMesh::initFieldTransfers
         fieldNameStream >> names;
     }
 
+    // Determine if there are any pointFields
+    bool pointFieldsPresent = false;
+
+    for (label index = 10; index < 15; index++)
+    {
+        if (names[index].size())
+        {
+            pointFieldsPresent = true;
+            break;
+        }
+    }
+
+    // Initialize pointMesh on subMeshes
+    if (pointFieldsPresent)
+    {
+        // If the commsType is nonBlocking,
+        // temporarily change to blocking comms to avoid
+        // parallel communication in pointBoundaryMesh
+        bool nonBlocking = (Pstream::defaultCommsType == Pstream::nonBlocking);
+
+        if (nonBlocking)
+        {
+            Pstream::defaultCommsType = Pstream::blocking;
+        }
+
+        forAll(procIndices_, pI)
+        {
+            pointMesh::New(sendMeshes_[pI].subMesh());
+            pointMesh::New(recvMeshes_[pI].subMesh());
+        }
+
+        if (nonBlocking)
+        {
+            Pstream::defaultCommsType = Pstream::nonBlocking;
+        }
+    }
+
     label nProcs = procIndices_.size();
 
     // Size up buffers
