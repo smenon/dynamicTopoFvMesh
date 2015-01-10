@@ -18,15 +18,14 @@ edgeCollapse.C
 
 coupledMesh/coupleMap.C
 coupledMesh/dynamicTopoFvMeshCoupled.C
-coupledMesh/subMeshProcessorPolyPatch.C
-coupledMesh/subMeshProcessorFvPatch.C
 
-fvPatchFields = coupledMesh/fields/fvPatchFields
-$(fvPatchFields)/subMeshProcessorFvPatchFields.C
-$(fvPatchFields)/subMeshProcessorFvPatchScalarField.C
-
-fvsPatchFields = coupledMesh/fields/fvsPatchFields
-$(fvsPatchFields)/subMeshProcessorFvsPatchFields.C
+fields = coupledMesh/subMeshProcessor/fields
+patches = coupledMesh/subMeshProcessor/patches
+$(patches)/subMeshProcessorPolyPatch.C
+$(patches)/subMeshProcessorFvPatch.C
+$(fields)/fvPatchFields/subMeshProcessorFvPatchFields.C
+$(fields)/fvPatchFields/subMeshProcessorFvPatchScalarField.C
+$(fields)/fvsPatchFields/subMeshProcessorFvsPatchFields.C
 
 convexSetAlgorithm/convexSetAlgorithm.C
 convexSetAlgorithm/faceSetAlgorithm.C
