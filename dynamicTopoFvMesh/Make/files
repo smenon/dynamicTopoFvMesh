@@ -21,11 +21,13 @@ coupledMesh/dynamicTopoFvMeshCoupled.C
 
 fields = coupledMesh/subMeshProcessor/fields
 patches = coupledMesh/subMeshProcessor/patches
+$(patches)/subMeshProcessorPointPatch.C
 $(patches)/subMeshProcessorPolyPatch.C
 $(patches)/subMeshProcessorFvPatch.C
 $(fields)/fvPatchFields/subMeshProcessorFvPatchFields.C
 $(fields)/fvPatchFields/subMeshProcessorFvPatchScalarField.C
 $(fields)/fvsPatchFields/subMeshProcessorFvsPatchFields.C
+$(fields)/pointPatchFields/subMeshProcessorPointPatchFields.C
 
 convexSetAlgorithm/convexSetAlgorithm.C
 convexSetAlgorithm/faceSetAlgorithm.C
