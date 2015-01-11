@@ -280,6 +280,10 @@ coupledInfo<MeshType>::subMeshPointMapper::subMeshPointMapper
 :
     sizeBeforeMapping_(cInfo.baseMesh().boundary()[patchI].patch().nPoints())
 {
+    const polyPatch& patch = cInfo.subMesh().boundary()[patchI].patch();
+
+    // Prepare direct addressing
+    directAddressing_.setSize(patch.nPoints(), 0);
 }
 
 
