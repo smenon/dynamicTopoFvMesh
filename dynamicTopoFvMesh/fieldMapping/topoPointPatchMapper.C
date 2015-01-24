@@ -294,7 +294,7 @@ void topoPointPatchMapper::calcAddressing() const
     if (nUnmappedPoints)
     {
         FatalErrorIn("void topoPointPatchMapper::calcAddressing() const")
-            << " Found " << nUnmappedPoints << " which are"
+            << " Found " << nUnmappedPoints << " points which are"
             << " not mapped from any parent points." << nl
             << " Patch: " << patch_.name() << nl
             << " List: " << nl

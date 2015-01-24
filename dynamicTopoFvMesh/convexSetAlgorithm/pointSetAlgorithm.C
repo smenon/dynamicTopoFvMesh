@@ -125,6 +125,7 @@ void pointSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
     const pointField& meshPoints = mesh_.points();
     const label nCandidates = mapCandidates.size();
 
+    parents_.setSize(nCandidates);
     centres_.setSize(nCandidates);
     weights_.setSize(nCandidates);
 
@@ -135,6 +136,7 @@ void pointSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
         const point& mapPoint = meshPoints[pIndex];
         const scalar sqrDist = Foam::magSqr(refCentre_ - mapPoint);
 
+        parents_[indexI] = pIndex;
         centres_[indexI] = mapPoint;
         weights_[indexI] = (1.0 / stabilise(sqrDist, VSMALL));
     }
