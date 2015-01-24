@@ -120,10 +120,12 @@ class topoMapper
         mutable bool disableGradients_;
 
         //- Intersection weights
+        mutable List<scalarField> pointWeights_;
         mutable List<scalarField> faceWeights_;
         mutable List<scalarField> cellWeights_;
 
         //- Intersection centres
+        mutable List<vectorField> pointCentres_;
         mutable List<vectorField> faceCentres_;
         mutable List<vectorField> cellCentres_;
 
@@ -215,6 +217,13 @@ public:
         //- Set mapping information
         void setMapper(const mapPolyMesh& mpm) const;
 
+        //- Set point weighting information
+        void setPointWeights
+        (
+            const Xfer<List<scalarField> >& weights,
+            const Xfer<List<vectorField> >& centres
+        ) const;
+
         //- Set face weighting information
         void setFaceWeights
         (
@@ -240,11 +249,17 @@ public:
             const labelListList& patchStarts
         ) const;
 
+        //- Fetch point weights
+        const List<scalarField>& pointWeights() const;
+
         //- Fetch face weights
         const List<scalarField>& faceWeights() const;
 
         //- Fetch cell weights
         const List<scalarField>& cellWeights() const;
+
+        //- Fetch point centres
+        const List<vectorField>& pointCentres() const;
 
         //- Fetch face centres
         const List<vectorField>& faceCentres() const;

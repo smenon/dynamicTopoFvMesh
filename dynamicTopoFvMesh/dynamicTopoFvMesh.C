@@ -969,16 +969,11 @@ label dynamicTopoFvMesh::insertPoint
             << newPoint
             << " and old point: "
             << oldPoint
-            << "  Mapped from: "
-            << mapPoints << endl;
+            << endl;
     }
 
-    // Make a pointsFromPoints entry
-    meshOps::sizeUpList
-    (
-        objectMap(newPointIndex, mapPoints),
-        pointsFromPoints_
-    );
+    // Make a pointParents entry
+    setPointMapping(newPointIndex);
 
     // Add an empty entry to pointEdges as well.
     // This entry can be sized-up appropriately at a later stage.
@@ -1067,15 +1062,12 @@ void dynamicTopoFvMesh::removePoint
         }
     }
 
-    // Check if the point was added in the current morph, and delete
-    forAll(pointsFromPoints_, indexI)
+    // Remove from pointParents list, if necessary
+    labelHashSet::iterator ppsit = pointParents_.find(pIndex);
+
+    if (ppsit != pointParents_.end())
     {
-        if (pointsFromPoints_[indexI].index() == pIndex)
-        {
-            // Remove entry from the list
-            meshOps::removeIndex(indexI, pointsFromPoints_);
-            break;
-        }
+        pointParents_.erase(ppsit);
     }
 
     // Decrement the total point-count
@@ -4212,6 +4204,12 @@ bool dynamicTopoFvMesh::resetMesh()
 
         // Set weighting information.
         // This takes over the weight data.
+        fieldMapper.setPointWeights
+        (
+            xferMove(pointWeights_),
+            xferMove(pointCentres_)
+        );
+
         fieldMapper.setFaceWeights
         (
             xferMove(faceWeights_),
@@ -4408,6 +4406,7 @@ bool dynamicTopoFvMesh::resetMesh()
         addedPointZones_.clear();
         addedFaceZones_.clear();
         addedCellZones_.clear();
+        pointParents_.clear();
         faceParents_.clear();
         cellParents_.clear();
 

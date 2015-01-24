@@ -42,6 +42,7 @@ Author
 #include "IOmanip.H"
 #include "triFace.H"
 #include "objectMap.H"
+#include "pointSetAlgorithm.H"
 #include "faceSetAlgorithm.H"
 #include "cellSetAlgorithm.H"
 
@@ -60,19 +61,22 @@ void dynamicTopoFvMesh::computeMapping
     const scalar matchTol,
     const bool skipMapping,
     const bool mappingOutput,
+    const label pointStart,
+    const label pointSize,
     const label faceStart,
     const label faceSize,
     const label cellStart,
     const label cellSize,
+    const convexSetAlgorithm& pointAlgorithm,
     const convexSetAlgorithm& faceAlgorithm,
     const convexSetAlgorithm& cellAlgorithm
 )
 {
     labelList mapCandidates;
     label nInconsistencies = 0;
-    scalar maxFaceError = 0.0, maxCellError = 0.0;
-    DynamicList<scalar> cellErrors(10), faceErrors(10);
-    DynamicList<objectMap> failedCells(10), failedFaces(10);
+    scalar maxPointError = 0.0, maxFaceError = 0.0, maxCellError = 0.0;
+    DynamicList<scalar> pointErrors(10), cellErrors(10), faceErrors(10);
+    DynamicList<objectMap> failedPoints(10), failedCells(10), failedFaces(10);
 
     // Compute cell mapping
     for (label cellI = cellStart; cellI < (cellStart + cellSize); cellI++)
@@ -265,11 +269,61 @@ void dynamicTopoFvMesh::computeMapping
         }
     }
 
+    // Compute point mapping
+    for (label pointI = pointStart; pointI < (pointStart + pointSize); pointI++)
+    {
+        label pIndex = pointsFromPoints_[pointI].index();
+        labelList& masterObjects = pointsFromPoints_[pointI].masterObjects();
+
+        if (skipMapping)
+        {
+            // Dummy map from point[0]
+            masterObjects = labelList(1, 0);
+            pointWeights_[pointI].setSize(1, 1.0);
+        }
+        else
+        {
+            // Calculate the algorithm normFactor
+            pointAlgorithm.computeNormFactor(pIndex);
+
+            // Find the nearest candidates for mapping
+            pointAlgorithm.findMappingCandidates(mapCandidates);
+
+            // Normalize using sum of weights
+            pointAlgorithm.normalize(true);
+
+            // Populate lists
+            pointAlgorithm.populateLists
+            (
+                masterObjects,
+                pointCentres_[pointI],
+                pointWeights_[pointI]
+            );
+
+            // Compute error
+            scalar error = mag(1.0 - sum(pointWeights_[pointI]));
+
+            if (error > matchTol)
+            {
+                nInconsistencies++;
+
+                // Add to list
+                pointErrors.append(error);
+
+                // Accumulate error stats
+                maxPointError = Foam::max(maxPointError, error);
+
+                failedPoints.append(objectMap(pIndex, labelList(0)));
+            }
+        }
+    }
+
     if (nInconsistencies)
     {
         Pout<< " Mapping errors: "
             << " max cell error: " << maxCellError
             << " max face error: " << maxFaceError
+            << " max point error: " << maxPointError
             << endl;
 
         if (debug || mappingOutput)
@@ -302,6 +356,20 @@ void dynamicTopoFvMesh::computeMapping
                     Pout<< "  Face: " << index
                         << "  Patch: " << boundary[patchIndex].name()
                         << "  Error: " << faceErrors[faceI]
+                        << endl;
+                }
+            }
+
+            if (failedPoints.size())
+            {
+                Pout<< " failedPoints: " << endl;
+
+                forAll(failedPoints, pointI)
+                {
+                    label index = failedPoints[pointI].index();
+
+                    Pout<< "  Point: " << index
+                        << "  Error: " << pointErrors[pointI]
                         << endl;
                 }
             }
@@ -416,20 +484,27 @@ void dynamicTopoFvMesh::computeMappingThread(void *argument)
     scalar& matchTol  = *(static_cast<scalar*>(thread->operator()(0)));
     bool& skipMapping = *(static_cast<bool*>(thread->operator()(1)));
     bool& mappingOutput = *(static_cast<bool*>(thread->operator()(2)));
-    label& faceStart = *(static_cast<label*>(thread->operator()(3)));
-    label& faceSize = *(static_cast<label*>(thread->operator()(4)));
-    label& cellStart = *(static_cast<label*>(thread->operator()(5)));
-    label& cellSize = *(static_cast<label*>(thread->operator()(6)));
+    label& pointStart = *(static_cast<label*>(thread->operator()(3)));
+    label& pointSize = *(static_cast<label*>(thread->operator()(4)));
+    label& faceStart = *(static_cast<label*>(thread->operator()(5)));
+    label& faceSize = *(static_cast<label*>(thread->operator()(6)));
+    label& cellStart = *(static_cast<label*>(thread->operator()(7)));
+    label& cellSize = *(static_cast<label*>(thread->operator()(8)));
 
     // Recast algorithms
+    convexSetAlgorithm& pointAlgorithm =
+    (
+        *(static_cast<convexSetAlgorithm*>(thread->operator()(9)))
+    );
+
     convexSetAlgorithm& faceAlgorithm =
     (
-        *(static_cast<convexSetAlgorithm*>(thread->operator()(7)))
+        *(static_cast<convexSetAlgorithm*>(thread->operator()(10)))
     );
 
     convexSetAlgorithm& cellAlgorithm =
     (
-        *(static_cast<convexSetAlgorithm*>(thread->operator()(8)))
+        *(static_cast<convexSetAlgorithm*>(thread->operator()(11)))
     );
 
     // Now calculate addressing
@@ -438,8 +513,10 @@ void dynamicTopoFvMesh::computeMappingThread(void *argument)
         matchTol,
         skipMapping,
         mappingOutput,
+        pointStart, pointSize,
         faceStart, faceSize,
         cellStart, cellSize,
+        pointAlgorithm,
         faceAlgorithm,
         cellAlgorithm
     );
@@ -467,6 +544,16 @@ void dynamicTopoFvMesh::threadedMapping
         Info<< " *** Mapping is being skipped *** " << endl;
     }
 
+    // Populate pointsFromPoints
+    label nPointsFromPoints = 0;
+
+    pointsFromPoints_.setSize(pointParents_.size());
+
+    forAllConstIter(labelHashSet, pointParents_, pIter)
+    {
+        pointsFromPoints_[nPointsFromPoints++].index() = pIter.key();
+    }
+
     // Populate facesFromFaces
     label nFacesFromFaces = 0;
 
@@ -488,10 +575,24 @@ void dynamicTopoFvMesh::threadedMapping
     }
 
     // Set sizes for mapping
+    pointWeights_.setSize(nPointsFromPoints, scalarField(0));
+    pointCentres_.setSize(nPointsFromPoints, vectorField(0));
     faceWeights_.setSize(nFacesFromFaces, scalarField(0));
     faceCentres_.setSize(nFacesFromFaces, vectorField(0));
     cellWeights_.setSize(nCellsFromCells, scalarField(0));
     cellCentres_.setSize(nCellsFromCells, vectorField(0));
+
+    // Convex-set algorithm for points
+    pointSetAlgorithm pointAlgorithm
+    (
+        (*this),
+        oldPoints_,
+        edges_,
+        faces_,
+        cells_,
+        owner_,
+        neighbour_
+    );
 
     // Convex-set algorithm for faces
     faceSetAlgorithm faceAlgorithm
@@ -519,6 +620,7 @@ void dynamicTopoFvMesh::threadedMapping
 
     if (mappingOutput)
     {
+        pointAlgorithm.writeMappingCandidates();
         faceAlgorithm.writeMappingCandidates();
         cellAlgorithm.writeMappingCandidates();
     }
@@ -534,8 +636,10 @@ void dynamicTopoFvMesh::threadedMapping
             matchTol,
             skipMapping,
             mappingOutput,
+            0, nPointsFromPoints,
             0, nFacesFromFaces,
             0, nCellsFromCells,
+            pointAlgorithm,
             faceAlgorithm,
             cellAlgorithm
         );
@@ -552,17 +656,19 @@ void dynamicTopoFvMesh::threadedMapping
     }
 
     // Simple load-balancing scheme
-    FixedList<label, 2> index(-1);
-    FixedList<labelList, 2> tStarts(labelList(nThreads, 0));
-    FixedList<labelList, 2> tSizes(labelList(nThreads, 0));
+    FixedList<label, 3> index(-1);
+    FixedList<labelList, 3> tStarts(labelList(nThreads, 0));
+    FixedList<labelList, 3> tSizes(labelList(nThreads, 0));
 
-    index[0] = nFacesFromFaces;
-    index[1] = nCellsFromCells;
+    index[0] = nPointsFromPoints;
+    index[1] = nFacesFromFaces;
+    index[2] = nCellsFromCells;
 
     if (debug > 2)
     {
-        Pout<< " Mapping Faces: " << index[0] << nl
-            << " Mapping Cells: " << index[1] << endl;
+        Pout<< " Mapping Points: " << index[0] << nl
+            << " Mapping Faces: " << index[1] << nl
+            << " Mapping Cells: " << index[2] << endl;
     }
 
     forAll(index, indexI)
@@ -592,7 +698,7 @@ void dynamicTopoFvMesh::threadedMapping
     forAll(hdl, i)
     {
         // Size up the argument list
-        hdl[i].setSize(9);
+        hdl[i].setSize(12);
 
         // Set match tolerance
         hdl[i].set(0, &matchTol);
@@ -608,10 +714,13 @@ void dynamicTopoFvMesh::threadedMapping
         hdl[i].set(4, &(tSizes[0][i]));
         hdl[i].set(5, &(tStarts[1][i]));
         hdl[i].set(6, &(tSizes[1][i]));
+        hdl[i].set(7, &(tStarts[2][i]));
+        hdl[i].set(8, &(tSizes[2][i]));
 
         // Set algorithms
-        hdl[i].set(7, &(faceAlgorithm));
-        hdl[i].set(8, &(cellAlgorithm));
+        hdl[i].set(9, &(pointAlgorithm));
+        hdl[i].set(10, &(faceAlgorithm));
+        hdl[i].set(11, &(cellAlgorithm));
     }
 
     // Prior to multi-threaded operation,
@@ -693,6 +802,22 @@ void dynamicTopoFvMesh::setFaceMapping
 
     // Update face-parents information
     faceParents_.set(fIndex);
+}
+
+
+// Set fill-in mapping information for a particular point
+void dynamicTopoFvMesh::setPointMapping
+(
+    const label pIndex
+)
+{
+    if (debug > 3)
+    {
+        Pout<< "Inserting mapping point: " << pIndex << endl;
+    }
+
+    // Update point-parents information
+    pointParents_.set(pIndex);
 }
 
 

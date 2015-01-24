@@ -217,6 +217,10 @@ class dynamicTopoFvMesh
         Map<label> addedCellZones_;
 
         // Information for field-mapping
+        labelHashSet pointParents_;
+        List<scalarField> pointWeights_;
+        List<vectorField> pointCentres_;
+
         labelHashSet faceParents_;
         List<scalarField> faceWeights_;
         List<vectorField> faceCentres_;
@@ -331,10 +335,13 @@ class dynamicTopoFvMesh
             const scalar matchTol,
             const bool skipMapping,
             const bool mappingOutput,
+            const label pointStart,
+            const label pointSize,
             const label faceStart,
             const label faceSize,
             const label cellStart,
             const label cellSize,
+            const convexSetAlgorithm& pointAlgorithm,
             const convexSetAlgorithm& faceAlgorithm,
             const convexSetAlgorithm& cellAlgorithm
         );
@@ -563,6 +570,9 @@ class dynamicTopoFvMesh
 
         // Set fill-in mapping information for a particular face
         void setFaceMapping(const label fIndex);
+
+        // Set fill-in mapping information for a particular point
+        void setPointMapping(const label pIndex);
 
         // Remove the specified cells from the mesh
         const changeMap

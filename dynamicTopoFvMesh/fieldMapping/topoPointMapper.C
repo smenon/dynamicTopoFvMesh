@@ -89,7 +89,7 @@ void topoPointMapper::calcAddressing() const
                 )
                     << "Master point " << pointI
                     << " mapped from points " << mo
-                    << " is already destination for mapping."
+                    << " is already mapping from: " << addr[pointI]
                     << abort(FatalError);
             }
 
@@ -124,7 +124,7 @@ void topoPointMapper::calcAddressing() const
     if (nInsertedPoints)
     {
         FatalErrorIn("void topoPointMapper::calcAddressing() const")
-            << " Found " << nInsertedPoints << " which are"
+            << " Found " << nInsertedPoints << " points which are"
             << " not mapped from any parent points." << nl
             << " List: " << nl
             << insertedPoints
@@ -150,14 +150,26 @@ void topoPointMapper::calcWeights() const
     weightsPtr_ = new scalarListList(size());
     scalarListList& weights = *weightsPtr_;
 
+    // Fetch maps
+    const List<objectMap>& pfp = mpm_.pointsFromPointsMap();
+    const List<scalarField>& mapPointWeights = tMapper_.pointWeights();
+
+    // Fill in maps first
+    forAll(pfp, indexI)
+    {
+        weights[pfp[indexI].index()] = mapPointWeights[indexI];
+    }
+
+    // Now do mapped points
     forAll(addr, pointI)
     {
         const labelList& mo = addr[pointI];
 
-        // Specify equal weights
-        const scalar weight = (1.0 / scalar(mo.size()));
-
-        weights[pointI] = scalarList(mo.size(), weight);
+        // Check if this is indeed a mapped point
+        if (mo.size() == 1 && weights[pointI].empty())
+        {
+            weights[pointI] = scalarList(1, 1.0);
+        }
     }
 }
 

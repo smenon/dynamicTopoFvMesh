@@ -4963,6 +4963,10 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             checkPoints[0] = replacePoint;
             checkPoints[1] = collapsePoint;
 
+            // Set point mapping, since we need to interpolate
+            // values at the new mid-point location
+            setPointMapping(replacePoint);
+
             break;
         }
 

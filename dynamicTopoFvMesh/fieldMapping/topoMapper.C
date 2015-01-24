@@ -281,6 +281,18 @@ void topoMapper::setMapper(const mapPolyMesh& mpm) const
 }
 
 
+//- Set point weighting information
+void topoMapper::setPointWeights
+(
+    const Xfer<List<scalarField> >& weights,
+    const Xfer<List<vectorField> >& centres
+) const
+{
+    pointWeights_.transfer(weights());
+    pointCentres_.transfer(centres());
+}
+
+
 //- Set face weighting information
 void topoMapper::setFaceWeights
 (
@@ -325,6 +337,13 @@ void topoMapper::setOffsets
 }
 
 
+//- Fetch point weights
+const List<scalarField>& topoMapper::pointWeights() const
+{
+    return pointWeights_;
+}
+
+
 //- Fetch face weights
 const List<scalarField>& topoMapper::faceWeights() const
 {
@@ -336,6 +355,13 @@ const List<scalarField>& topoMapper::faceWeights() const
 const List<scalarField>& topoMapper::cellWeights() const
 {
     return cellWeights_;
+}
+
+
+//- Fetch point centres
+const List<vectorField>& topoMapper::pointCentres() const
+{
+    return pointCentres_;
 }
 
 
@@ -703,9 +729,11 @@ void topoMapper::clear() const
     deleteDemandDrivenData(cellCentresPtr_);
 
     // Clear maps
+    pointWeights_.clear();
     faceWeights_.clear();
     cellWeights_.clear();
 
+    pointCentres_.clear();
     faceCentres_.clear();
     cellCentres_.clear();
 
