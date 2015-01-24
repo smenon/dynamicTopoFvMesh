@@ -30,6 +30,7 @@ $(fields)/fvsPatchFields/subMeshProcessorFvsPatchFields.C
 $(fields)/pointPatchFields/subMeshProcessorPointPatchFields.C
 
 convexSetAlgorithm/convexSetAlgorithm.C
+convexSetAlgorithm/pointSetAlgorithm.C
 convexSetAlgorithm/faceSetAlgorithm.C
 convexSetAlgorithm/cellSetAlgorithm.C
 
