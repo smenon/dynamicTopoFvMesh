@@ -515,20 +515,16 @@ void dynamicTopoFvMesh::executeLoadBalancing
     oldPatchStarts_.setSize(nPatches_, -1);
     oldEdgePatchSizes_.setSize(nPatches_, 0);
     oldEdgePatchStarts_.setSize(nPatches_, -1);
-    oldPatchNMeshPoints_.setSize(nPatches_, -1);
 
     patchSizes_.setSize(nPatches_, 0);
     patchStarts_.setSize(nPatches_, -1);
     edgePatchSizes_.setSize(nPatches_, 0);
     edgePatchStarts_.setSize(nPatches_, -1);
-    patchNMeshPoints_.setSize(nPatches_, -1);
 
     for (label i = 0; i < nPatches_; i++)
     {
-        patchNMeshPoints_[i] = boundary[i].meshPoints().size();
         oldPatchSizes_[i] = patchSizes_[i] = boundary[i].size();
         oldPatchStarts_[i] = patchStarts_[i] = boundary[i].start();
-        oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
     }
 
     // Clear pointers and re-initialize
@@ -7988,9 +7984,6 @@ label dynamicTopoFvMesh::createProcessorPatch(const label proc)
         nPatches_,
         oldEdgePatchStarts_[prevPatchID] + oldEdgePatchSizes_[prevPatchID]
     );
-
-    patchNMeshPoints_.setSize(nPatches_, 0);
-    oldPatchNMeshPoints_.setSize(nPatches_, 0);
 
     if (debug)
     {

@@ -120,8 +120,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     edgePatchSizes_(nPatches_, 0),
     oldEdgePatchStarts_(nPatches_, -1),
     edgePatchStarts_(nPatches_, -1),
-    oldPatchNMeshPoints_(nPatches_, -1),
-    patchNMeshPoints_(nPatches_, -1),
     nOldPoints_(primitiveMesh::nPoints()),
     nPoints_(primitiveMesh::nPoints()),
     nOldEdges_(0),
@@ -160,10 +158,8 @@ dynamicTopoFvMesh::dynamicTopoFvMesh(const IOobject& io)
     // Initialize patch-size information
     for (label i = 0; i < nPatches_; i++)
     {
-        patchNMeshPoints_[i] = boundary[i].meshPoints().size();
         oldPatchSizes_[i] = patchSizes_[i] = boundary[i].size();
         oldPatchStarts_[i] = patchStarts_[i] = boundary[i].start();
-        oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
     }
 
     // Open the tetMetric dynamic-link library (for 3D only)
@@ -244,8 +240,6 @@ dynamicTopoFvMesh::dynamicTopoFvMesh
     edgePatchSizes_(edgeSizes),
     oldEdgePatchStarts_(edgeStarts),
     edgePatchStarts_(edgeStarts),
-    oldPatchNMeshPoints_(faceStarts.size(), -1),
-    patchNMeshPoints_(faceStarts.size(), -1),
     nOldPoints_(points_.size()),
     nPoints_(points_.size()),
     nOldEdges_(edges_.size()),
@@ -4145,7 +4139,6 @@ bool dynamicTopoFvMesh::resetMesh()
         labelListList faceEdges(nFaces_);
         labelListList edgeFaces(nEdges_);
         labelList oldPatchStarts(oldPatchStarts_);
-        labelList oldPatchNMeshPoints(oldPatchNMeshPoints_);
         labelListList pointZoneMap(pointZones.size());
         labelListList faceZonePointMap(faceZones.size());
         labelListList faceZoneFaceMap(faceZones.size());
@@ -4193,6 +4186,7 @@ bool dynamicTopoFvMesh::resetMesh()
         );
 
         // Obtain the patch-point maps before resetting the mesh
+        labelList oldPatchNMeshPoints(nOldPatches);
         List<labelMap> oldPatchPointMaps(nOldPatches);
         IOList<labelList> oldPatchMeshPoints(oldPatchMeshPointsIO, nOldPatches);
 
@@ -4200,6 +4194,7 @@ bool dynamicTopoFvMesh::resetMesh()
         {
             oldPatchPointMaps[patchI] = boundaryMesh()[patchI].meshPointMap();
             oldPatchMeshPoints[patchI] = boundaryMesh()[patchI].meshPoints();
+            oldPatchNMeshPoints[patchI] = oldPatchMeshPoints[patchI].size();
         }
 
         // Set weighting information.
@@ -4268,8 +4263,6 @@ bool dynamicTopoFvMesh::resetMesh()
         {
             // Obtain new patch mesh points after reset.
             const labelList& meshPointLabels = boundaryMesh()[i].meshPoints();
-
-            patchNMeshPoints_[i] = meshPointLabels.size();
 
             patchPointMap[i].setSize(meshPointLabels.size(), -1);
 
@@ -4439,7 +4432,6 @@ bool dynamicTopoFvMesh::resetMesh()
             oldPatchStarts_[i] = patchStarts_[i];
             oldEdgePatchSizes_[i] = edgePatchSizes_[i];
             oldEdgePatchStarts_[i] = edgePatchStarts_[i];
-            oldPatchNMeshPoints_[i] = patchNMeshPoints_[i];
         }
 
         // Clear parallel structures

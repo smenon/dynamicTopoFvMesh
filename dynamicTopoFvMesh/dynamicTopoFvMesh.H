@@ -185,7 +185,6 @@ class dynamicTopoFvMesh
         labelList oldPatchStarts_, patchStarts_;
         labelList oldEdgePatchSizes_, edgePatchSizes_;
         labelList oldEdgePatchStarts_, edgePatchStarts_;
-        labelList oldPatchNMeshPoints_, patchNMeshPoints_;
         label nOldPoints_, nPoints_;
         label nOldEdges_, nEdges_;
         label nOldFaces_, nFaces_;
