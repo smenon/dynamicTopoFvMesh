@@ -186,6 +186,7 @@ void topoMapper::storeGeometry() const
     cellVolumesPtr_ = new scalarField(mesh_.cellVolumes());
 }
 
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 //- Construct from mesh and dictionary
@@ -216,6 +217,7 @@ topoMapper::~topoMapper()
 {
     clear();
 }
+
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
@@ -447,6 +449,7 @@ void topoMapper::storeMeshInformation() const
     // Store geometry
     storeGeometry();
 }
+
 
 //- Return non-const access to cell centres
 volVectorField& topoMapper::volCentres() const
@@ -750,6 +753,7 @@ void topoMapper::clear() const
 
 
 // * * * * * * * * * * * * * * * Member Operators  * * * * * * * * * * * * * //
+
 void topoMapper::operator=(const topoMapper& rhs)
 {
     // Check for assignment to self
@@ -763,6 +767,7 @@ void topoMapper::operator=(const topoMapper& rhs)
             << abort(FatalError);
     }
 }
+
 
 } // End namespace Foam
 

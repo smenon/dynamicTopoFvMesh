@@ -132,6 +132,9 @@ void dynamicTopoFvMesh::reOrderPoints
         {
             thisMap.index() = addedPointRenumbering_[thisMap.index()];
         }
+
+        // Ensure that point is not mapping from anything
+        pointMap_[thisMap.index()] = -1;
     }
 
     // Prepare the pointZoneMap
