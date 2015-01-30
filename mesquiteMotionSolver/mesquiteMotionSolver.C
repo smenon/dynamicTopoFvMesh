@@ -4182,9 +4182,26 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         const pointField& bP = basePoints_().internalField();
         const pointField& iF = boundaryConditions_().internalField();
 
+        // Mark boundary mesh points
+        forAll(boundary, patchI)
+        {
+            const polyPatch& patch = boundary[patchI];
+            const labelList& mPoints = patch.meshPoints();
+
+            forAll(mPoints, pointI)
+            {
+                const label pIndex = mPoints[pointI];
+                dPointField[pIndex] = vector::one;
+            }
+        }
+
+        // Displace boundary mesh points
         forAll(refPoints_, pI)
         {
-            dPointField[pI] = (bP[pI] + iF[pI] - refPoints_[pI]);
+            point& disp = dPointField[pI];
+            point bpVal = (bP[pI] + iF[pI] - refPoints_[pI]);
+
+            disp = cmptMultiply(disp, bpVal);
         }
     }
     else
@@ -5381,14 +5398,6 @@ void mesquiteMotionSolver::solve()
             (relax_ * refPoints_[pointI])
           + ((1.0 - relax_) * origPoints_[pointI])
         );
-    }
-
-    if (boundaryConditions_.valid())
-    {
-        pointField& bpField = basePoints_().internalField();
-        pointField& bcField = boundaryConditions_().internalField();
-
-        bcField = refPoints_ - bpField;
     }
 }
 
