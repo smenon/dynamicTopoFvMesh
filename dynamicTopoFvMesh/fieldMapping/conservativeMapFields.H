@@ -87,18 +87,10 @@ void mapPointFields
         {
             const topoPointPatchMapper& patchMapper = boundaryMap[pI];
 
-            if (bField[pI].size() == patchMapper.sizeBeforeMapping())
-            {
-                bField[pI].autoMap(patchMapper);
-            }
-            else
-            {
-                FatalErrorIn("void mapPointFields(const topoMapper&)")
-                    << "Incompatible size before mapping." << nl
-                    << " Boundary patch size: " << bField[pI].size() << nl
-                    << " Map size: " << patchMapper.sizeBeforeMapping()
-                    << abort(FatalError);
-            }
+            // Cannot check sizes for patch fields because
+            // point fields get their size from the patch
+            // which has already been resized
+            bField[pI].autoMap(patchMapper);
         }
     }
 }
