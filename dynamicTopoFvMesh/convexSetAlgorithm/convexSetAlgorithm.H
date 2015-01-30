@@ -73,6 +73,10 @@ protected:
         // Class for encapsulation of mapping search data
         class mappingTreeData;
 
+    // Protected typedefs
+
+        typedef indexedOctree<mappingTreeData> SearchTreeType;
+
     // Protected data
 
         const label nOldPoints_;
@@ -102,6 +106,17 @@ protected:
         mutable vectorField centres_;
         mutable scalarField weights_;
 
+        //- Tree for candidate search
+        mutable SearchTreeType* searchTreePtr_;
+
+    //- Protected member functions
+
+        // Return a const reference to the search tree
+        const SearchTreeType& searchTree() const;
+
+        // Construct the search tree
+        virtual void constructSearchTree() const = 0;
+
 public:
 
     //- Constructor
@@ -120,8 +135,7 @@ public:
 
     //- Destructor
 
-        virtual ~convexSetAlgorithm()
-        {}
+        virtual ~convexSetAlgorithm();
 
     //- Member functions
 

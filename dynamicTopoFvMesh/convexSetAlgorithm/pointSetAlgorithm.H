@@ -57,12 +57,10 @@ class pointSetAlgorithm
     public convexSetAlgorithm
 {
 
-    // Private member data
-
-        //- Tree for candidate search
-        indexedOctree<mappingTreeData> searchTree_;
-
     // Private Member Functions
+
+        // Construct the search tree
+        virtual void constructSearchTree() const;
 
         //- Disallow default bitwise copy construct
         pointSetAlgorithm(const pointSetAlgorithm&);

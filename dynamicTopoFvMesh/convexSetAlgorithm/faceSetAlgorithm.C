@@ -47,6 +47,30 @@ Author
 namespace Foam
 {
 
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+// Construct the search tree
+void faceSetAlgorithm::constructSearchTree() const
+{
+    if (searchTreePtr_)
+    {
+        FatalErrorIn("void faceSetAlgorithm::constructSearchTree() const")
+            << "searchTree is already allocated."
+            << abort(FatalError);
+    }
+
+    searchTreePtr_ =
+    (
+        new SearchTreeType
+        (
+            mappingTreeData(candidatePoints_),
+            treeBoundBox(candidatePoints_).extend(random_, 0.001),
+            8, 10.0, 5.0
+        )
+    );
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
@@ -76,12 +100,6 @@ faceSetAlgorithm::faceSetAlgorithm
         mesh.faceCentres(),
         mesh.nFaces() - mesh.nInternalFaces(),
         mesh.nInternalFaces()
-    ),
-    searchTree_
-    (
-        mappingTreeData(candidatePoints_),
-        treeBoundBox(candidatePoints_).extend(random_, 0.001),
-        8, 10.0, 5.0
     )
 {}
 
@@ -138,8 +156,10 @@ void faceSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
     // Clear the input list
     mapCandidates.clear();
 
+    const SearchTreeType& tree = searchTree();
+
     // Find all candidates within search box
-    mapCandidates = searchTree_.findBox(box_);
+    mapCandidates = tree.findBox(box_);
 
     // Since the tree addresses only into boundary faces,
     // offset the index by the number of internal faces
@@ -153,8 +173,10 @@ void faceSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
 // Write out mapping candidates
 void faceSetAlgorithm::writeMappingCandidates() const
 {
+    const SearchTreeType& tree = searchTree();
+
     // Fetch reference to tree points
-    const UList<point>& points = searchTree_.shapes().points();
+    const UList<point>& points = tree.shapes().points();
 
     // Write out points to VTK file
     meshOps::writeVTK

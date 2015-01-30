@@ -66,10 +66,10 @@ class faceSetAlgorithm
         // Candidate points for tree search
         SubList<point> candidatePoints_;
 
-        //- Tree for candidate search
-        indexedOctree<mappingTreeData> searchTree_;
-
     // Private Member Functions
+
+        // Construct the search tree
+        virtual void constructSearchTree() const;
 
         //- Disallow default bitwise copy construct
         faceSetAlgorithm(const faceSetAlgorithm&);

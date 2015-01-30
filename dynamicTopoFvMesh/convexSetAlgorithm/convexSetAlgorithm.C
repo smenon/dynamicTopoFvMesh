@@ -42,6 +42,7 @@ Author
 #include "objectMap.H"
 #include "edgeIOList.H"
 #include "cellIOList.H"
+#include "demandDrivenData.H"
 
 #include "convexSetAlgorithm.H"
 
@@ -53,6 +54,20 @@ namespace Foam
 // * * * * * * * * * * * * * * Static Data Members * * * * * * * * * * * * * //
 
 defineTypeName(convexSetAlgorithm::mappingTreeData);
+
+// * * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * //
+
+// Return a const reference to the search tree
+const convexSetAlgorithm::SearchTreeType& convexSetAlgorithm::searchTree() const
+{
+    if (!searchTreePtr_)
+    {
+        constructSearchTree();
+    }
+
+    return *searchTreePtr_;
+}
+
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -76,8 +91,17 @@ convexSetAlgorithm::convexSetAlgorithm
     newCells_(newCells),
     newOwner_(newOwner),
     newNeighbour_(newNeighbour),
-    random_(std::time(0))
+    random_(std::time(0)),
+    searchTreePtr_(NULL)
 {}
+
+
+// * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
+
+convexSetAlgorithm::~convexSetAlgorithm()
+{
+    deleteDemandDrivenData(searchTreePtr_);
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //

@@ -47,6 +47,30 @@ Author
 namespace Foam
 {
 
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+// Construct the search tree
+void cellSetAlgorithm::constructSearchTree() const
+{
+    if (searchTreePtr_)
+    {
+        FatalErrorIn("void cellSetAlgorithm::constructSearchTree() const")
+            << "searchTree is already allocated."
+            << abort(FatalError);
+    }
+
+    searchTreePtr_ =
+    (
+        new SearchTreeType
+        (
+            mappingTreeData(mesh_.cellCentres()),
+            treeBoundBox(mesh_.cellCentres()).extend(random_, 0.001),
+            8, 10.0, 5.0
+        )
+    );
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
@@ -70,12 +94,6 @@ cellSetAlgorithm::cellSetAlgorithm
         newCells,
         newOwner,
         newNeighbour
-    ),
-    searchTree_
-    (
-        mappingTreeData(mesh.cellCentres()),
-        treeBoundBox(mesh.cellCentres()).extend(random_, 0.001),
-        8, 10.0, 5.0
     )
 {}
 
@@ -120,16 +138,20 @@ void cellSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
     // Clear the input list
     mapCandidates.clear();
 
+    const SearchTreeType& tree = searchTree();
+
     // Find all candidates within search box
-    mapCandidates = searchTree_.findBox(box_);
+    mapCandidates = tree.findBox(box_);
 }
 
 
 // Write out mapping candidates
 void cellSetAlgorithm::writeMappingCandidates() const
 {
+    const SearchTreeType& tree = searchTree();
+
     // Fetch reference to tree points
-    const UList<point>& points = searchTree_.shapes().points();
+    const UList<point>& points = tree.shapes().points();
 
     // Write out points to VTK file
     meshOps::writeVTK

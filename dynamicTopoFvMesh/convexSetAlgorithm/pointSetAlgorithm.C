@@ -45,6 +45,30 @@ Author
 namespace Foam
 {
 
+// * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
+
+// Construct the search tree
+void pointSetAlgorithm::constructSearchTree() const
+{
+    if (searchTreePtr_)
+    {
+        FatalErrorIn("void pointSetAlgorithm::constructSearchTree() const")
+            << "searchTree is already allocated."
+            << abort(FatalError);
+    }
+
+    searchTreePtr_ =
+    (
+        new SearchTreeType
+        (
+            mappingTreeData(mesh_.points()),
+            treeBoundBox(mesh_.points()).extend(random_, 0.001),
+            8, 10.0, 5.0
+        )
+    );
+}
+
+
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
 // Construct from components
@@ -68,12 +92,6 @@ pointSetAlgorithm::pointSetAlgorithm
         newCells,
         newOwner,
         newNeighbour
-    ),
-    searchTree_
-    (
-        mappingTreeData(mesh.points()),
-        treeBoundBox(mesh.points()).extend(random_, 0.001),
-        8, 10.0, 5.0
     )
 {}
 
@@ -88,7 +106,9 @@ void pointSetAlgorithm::computeNormFactor(const label index) const
     centres_.clear();
     weights_.clear();
 
-    pointIndexHit pHit = searchTree_.findNearest(newPoints_[index], GREAT);
+    const SearchTreeType& tree = searchTree();
+
+    pointIndexHit pHit = tree.findNearest(newPoints_[index], GREAT);
 
     if (pHit.hit())
     {
@@ -119,8 +139,10 @@ void pointSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
     // Clear the input list
     mapCandidates.clear();
 
+    const SearchTreeType& tree = searchTree();
+
     // Find all candidates within search radius
-    mapCandidates = searchTree_.findSphere(refCentre_, normFactor_);
+    mapCandidates = tree.findSphere(refCentre_, normFactor_);
 
     const pointField& meshPoints = mesh_.points();
     const label nCandidates = mapCandidates.size();
@@ -146,8 +168,10 @@ void pointSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
 // Write out mapping candidates
 void pointSetAlgorithm::writeMappingCandidates() const
 {
+    const SearchTreeType& tree = searchTree();
+
     // Fetch reference to tree points
-    const UList<point>& points = searchTree_.shapes().points();
+    const UList<point>& points = tree.shapes().points();
 
     // Write out points to VTK file
     meshOps::writeVTK
