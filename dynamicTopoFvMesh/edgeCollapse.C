@@ -4942,30 +4942,27 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             replacePoint = edges_[eIndex][1];
             collapsePoint = edges_[eIndex][0];
 
-            newPoint =
-            (
-                0.5 *
-                (
-                    points_[replacePoint]
-                  + points_[collapsePoint]
-                )
-            );
+            const point& nrPoint = points_[replacePoint];
+            const point& ncPoint = points_[collapsePoint];
 
-            oldPoint =
-            (
-                0.5 *
-                (
-                    oldPoints_[replacePoint]
-                  + oldPoints_[collapsePoint]
-                )
-            );
+            newPoint = 0.5 * (nrPoint + ncPoint);
+
+            const point& orPoint = oldPoints_[replacePoint];
+            const point& ocPoint = oldPoints_[collapsePoint];
+
+            oldPoint = 0.5 * (orPoint + ocPoint);
 
             checkPoints[0] = replacePoint;
             checkPoints[1] = collapsePoint;
 
+            // Compute a mapping factor
+            const scalar rSqrDist = Foam::magSqr(orPoint - oldPoint);
+            const scalar cSqrDist = Foam::magSqr(ocPoint - oldPoint);
+            const scalar factor = 1.01 * Foam::max(rSqrDist, cSqrDist);
+
             // Set point mapping, since we need to interpolate
             // values at the new mid-point location
-            setPointMapping(replacePoint);
+            setPointMapping(replacePoint, factor);
 
             break;
         }

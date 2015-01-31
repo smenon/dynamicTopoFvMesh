@@ -1932,10 +1932,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     }
 
     // Specify a merge tolerance for insertion points
-    scalar mergeTol =
-    (
-        is2D() ? 0.0 : geomMatchTol_ * magSqr(edges_[mIndex].vec(points_))
-    );
+    const scalar sqrEdgeLength = Foam::magSqr(edges_[mIndex].vec(points_));
+    const scalar mergeTol = is2D() ? 0.0 : (geomMatchTol_ * sqrEdgeLength);
 
     // Check for point / edge processor connections
     if (is3D())
@@ -2349,6 +2347,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
+    // Compute a mapping factor for all unique / merged points
+    const scalar factor = (0.1 * sqrEdgeLength);
+
     // Insert all points, with merging if necessary
     forAll(pointsToInsert, pI)
     {
@@ -2397,7 +2398,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                                 insertPoint
                                 (
                                     pointJ,
-                                    meshJ.oldPoints_[pItJ.key()]
+                                    meshJ.oldPoints_[pItJ.key()],
+                                    factor
                                 )
                             );
 
@@ -2490,7 +2492,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 insertPoint
                 (
                     pointI,
-                    meshI.oldPoints_[pItI.key()]
+                    meshI.oldPoints_[pItI.key()],
+                    factor
                 )
             );
 

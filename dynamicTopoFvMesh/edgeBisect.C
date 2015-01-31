@@ -635,32 +635,54 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     FixedList<label, 2> mP;
 
-    // Set mapping for this point
+    // Fetch points
     mP[0] = commonEdges[0][0];
     mP[1] = commonEdges[0][1];
 
-    // Add two new points to the end of the list
-    newPointIndex[0] =
-    (
-        insertPoint
-        (
-            0.5 * (points_[mP[0]] + points_[mP[1]]),
-            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]])
-        )
-    );
+    const point& n00Point = points_[mP[0]];
+    const point& n01Point = points_[mP[1]];
+    const point& o00Point = oldPoints_[mP[0]];
+    const point& o01Point = oldPoints_[mP[1]];
 
-    // Set mapping for this point
     mP[0] = commonEdges[1][0];
     mP[1] = commonEdges[1][1];
 
-    newPointIndex[1] =
-    (
-        insertPoint
-        (
-            0.5 * (points_[mP[0]] + points_[mP[1]]),
-            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]])
-        )
-    );
+    const point& n10Point = points_[mP[0]];
+    const point& n11Point = points_[mP[1]];
+    const point& o10Point = oldPoints_[mP[0]];
+    const point& o11Point = oldPoints_[mP[1]];
+
+    // Compute old / new mid-points
+    const point nMidPoint[2] =
+    {
+        0.5 * (n00Point + n01Point),
+        0.5 * (n10Point + n11Point)
+    };
+
+    const point oMidPoint[2] =
+    {
+        0.5 * (o00Point + o01Point),
+        0.5 * (o10Point + o11Point)
+    };
+
+    // Compute mapping factors
+    const scalar pSqrDist[4] =
+    {
+        Foam::magSqr(o00Point - oMidPoint[0]),
+        Foam::magSqr(o01Point - oMidPoint[0]),
+        Foam::magSqr(o10Point - oMidPoint[1]),
+        Foam::magSqr(o11Point - oMidPoint[1])
+    };
+
+    const scalar factor[2] =
+    {
+        1.01 * Foam::max(pSqrDist[0], pSqrDist[1]),
+        1.01 * Foam::max(pSqrDist[2], pSqrDist[3])
+    };
+
+    // Add two new points to the end of the list
+    newPointIndex[0] = insertPoint(nMidPoint[0], oMidPoint[0], factor[0]);
+    newPointIndex[1] = insertPoint(nMidPoint[1], oMidPoint[1], factor[1]);
 
     // Add the points to the map. Since this might require master mapping,
     // first check to see if a slave is being bisected.
@@ -2839,19 +2861,31 @@ const changeMap dynamicTopoFvMesh::bisectEdge
 
     FixedList<label, 2> mP;
 
-    // Set mapping for this point
+    // Set master points
     mP[0] = edges_[eIndex][0];
     mP[1] = edges_[eIndex][1];
 
+    // Fetch points
+    const point& n0Point = points_[mP[0]];
+    const point& n1Point = points_[mP[1]];
+    const point& o0Point = oldPoints_[mP[0]];
+    const point& o1Point = oldPoints_[mP[1]];
+
+    // Compute old / new mid-point
+    const point nMidPoint = 0.5 * (n0Point + n1Point);
+    const point oMidPoint = 0.5 * (o0Point + o1Point);
+
+    // Compute mapping factor
+    const scalar pSqrDist[2] =
+    {
+        Foam::magSqr(o0Point - oMidPoint),
+        Foam::magSqr(o1Point - oMidPoint)
+    };
+
+    const scalar factor = 1.01 * Foam::max(pSqrDist[0], pSqrDist[1]);
+
     // Add a new point to the end of the list
-    label newPointIndex =
-    (
-        insertPoint
-        (
-            0.5 * (points_[mP[0]] + points_[mP[1]]),
-            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]])
-        )
-    );
+    label newPointIndex = insertPoint(nMidPoint, oMidPoint, factor);
 
     // Add this point to the map.
     map.addPoint(newPointIndex);
@@ -4874,14 +4908,19 @@ const changeMap dynamicTopoFvMesh::addCellLayer
             mP[0] = pIndex;
             mP[1] = oFace[pointI];
 
-            label newPointIndex =
-            (
-                insertPoint
-                (
-                    0.5 * (points_[mP[0]] + points_[mP[1]]),
-                    oldPoints_[mP[0]]
-                )
-            );
+            // Fetch points
+            const point& n0Point = points_[mP[0]];
+            const point& n1Point = points_[mP[1]];
+
+            // Compute new mid-point
+            const point& oPoint = oldPoints_[mP[0]];
+            const point nMidPoint = 0.5 * (n0Point + n1Point);
+
+            // Compute mapping factor
+            const scalar factor = 0.1 * Foam::magSqr(nMidPoint - oPoint);
+
+            // Add a new point to the end of the list
+            label newPointIndex = insertPoint(nMidPoint, oPoint, factor);
 
             // Update maps
             map.addPoint(newPointIndex, labelList(1, pIndex));
@@ -5347,10 +5386,10 @@ void dynamicTopoFvMesh::splitInternalFaces
     {
         // Obtain a copy of the point before adding it,
         // since the reference might become invalid during list resizing.
-        point newPoint = points_[pIter.key()];
-        point oldPoint = oldPoints_[pIter.key()];
+        const point newPoint = points_[pIter.key()];
+        const point oldPoint = oldPoints_[pIter.key()];
 
-        pIter() = insertPoint(newPoint, oldPoint);
+        pIter() = insertPoint(newPoint, oldPoint, 0.0);
 
         if (is3D())
         {

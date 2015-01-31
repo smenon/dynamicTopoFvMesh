@@ -99,32 +99,7 @@ pointSetAlgorithm::pointSetAlgorithm
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
 void pointSetAlgorithm::computeNormFactor(const label index) const
-{
-    const SearchTreeType& tree = searchTree();
-
-    pointIndexHit pHit = tree.findNearest(newPoints_[index], GREAT);
-
-    if (pHit.hit())
-    {
-        const label pIndex = pHit.index();
-
-        // Store the closest point and square distance to it
-        refCentre_ = newPoints_[index];
-        refNorm_ = mesh_.points()[pIndex];
-        normFactor_ = Foam::magSqr(refCentre_ - refNorm_);
-
-        // Scale it up by a bit
-        normFactor_ *= 1.5;
-    }
-    else
-    {
-        FatalErrorIn("void pointSetAlgorithm::computeNormFactor() const")
-            << " Unable to find an initial candidate for"
-            << " index: " << index
-            << " point: " << newPoints_[index]
-            << abort(FatalError);
-    }
-}
+{}
 
 
 // Find the nearest mapping candidates

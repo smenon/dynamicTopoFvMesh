@@ -283,8 +283,11 @@ void dynamicTopoFvMesh::computeMapping
         }
         else
         {
-            // Calculate the algorithm normFactor
-            pointAlgorithm.computeNormFactor(pIndex);
+            const scalar factor = pointFactors_[pointI];
+
+            // Set the algorithm refCentre / normFactor
+            pointAlgorithm.setRefCentre(pIndex);
+            pointAlgorithm.setNormFactor(factor);
 
             // Find the nearest candidates for mapping
             pointAlgorithm.findMappingCandidates(mapCandidates);
@@ -547,11 +550,14 @@ void dynamicTopoFvMesh::threadedMapping
     // Populate pointsFromPoints
     label nPointsFromPoints = 0;
 
+    pointFactors_.setSize(pointParents_.size());
     pointsFromPoints_.setSize(pointParents_.size());
 
-    forAllConstIter(labelHashSet, pointParents_, pIter)
+    forAllConstIter(Map<scalar>, pointParents_, pIter)
     {
-        pointsFromPoints_[nPointsFromPoints++].index() = pIter.key();
+        pointFactors_[nPointsFromPoints] = pIter();
+        pointsFromPoints_[nPointsFromPoints].index() = pIter.key();
+        nPointsFromPoints++;
     }
 
     // Populate facesFromFaces
@@ -808,16 +814,18 @@ void dynamicTopoFvMesh::setFaceMapping
 // Set fill-in mapping information for a particular point
 void dynamicTopoFvMesh::setPointMapping
 (
-    const label pIndex
+    const label pIndex,
+    const scalar factor
 )
 {
     if (debug > 3)
     {
-        Pout<< "Inserting mapping point: " << pIndex << endl;
+        Pout<< "Inserting mapping point: " << pIndex
+            << " factor: " << factor << endl;
     }
 
     // Update point-parents information
-    pointParents_.set(pIndex);
+    pointParents_.set(pIndex, factor);
 }
 
 

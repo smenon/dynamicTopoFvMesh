@@ -366,8 +366,29 @@ bool convexSetAlgorithm::consistent(const scalar tolerance) const
 }
 
 
+// Set the reference normal
+void convexSetAlgorithm::setRefNorm(const vector& refNorm) const
+{
+    refNorm_ = refNorm;
+}
+
+
+// Set the reference centre using a point index
+void convexSetAlgorithm::setRefCentre(const label pointIndex) const
+{
+    refCentre_ = newPoints_[pointIndex];
+}
+
+
+// Set the reference centre
+void convexSetAlgorithm::setRefCentre(const vector& refCentre) const
+{
+    refCentre_ = refCentre;
+}
+
+
 // Set the normFactor
-void convexSetAlgorithm::setNormFactor(const scalar normFactor)
+void convexSetAlgorithm::setNormFactor(const scalar normFactor) const
 {
     normFactor_ = normFactor;
 }

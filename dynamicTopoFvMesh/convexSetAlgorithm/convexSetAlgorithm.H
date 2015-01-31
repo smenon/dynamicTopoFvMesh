@@ -179,8 +179,17 @@ public:
         // Return true if accumulated weights are consistent
         bool consistent(const scalar tolerance) const;
 
+        // Set the reference normal
+        void setRefNorm(const vector& refNorm) const;
+
+        // Set the reference centre using a point index
+        void setRefCentre(const label pointIndex) const;
+
+        // Set the reference centre
+        void setRefCentre(const vector& refCentre) const;
+
         // Set the normFactor
-        void setNormFactor(const scalar normFactor);
+        void setNormFactor(const scalar normFactor) const;
 
         // Return the normFactor
         scalar normFactor() const;
