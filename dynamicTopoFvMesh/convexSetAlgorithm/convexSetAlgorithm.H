@@ -142,25 +142,8 @@ public:
         // Dimensions of the algorithm
         virtual label dimension() const = 0;
 
-        // Return true if accumulated weights are consistent
-        virtual bool consistent(const scalar tolerance) const;
-
-        // Return the normFactor
-        virtual scalar normFactor() const;
-
-        // Normalize stored weights
-        virtual void normalize(bool normSum) const;
-
         // Check whether the bounding box contains the entity
         virtual bool contains(const label index) const = 0;
-
-        // Extract weights and centres to lists
-        virtual void populateLists
-        (
-            labelList& parents,
-            vectorField& centres,
-            scalarField& weights
-        ) const;
 
         // Compute normFactor
         virtual void computeNormFactor(const label index) const = 0;
@@ -181,7 +164,7 @@ public:
         ) const = 0;
 
         // Obtain map weighting factors
-        virtual void computeWeights
+        void computeWeights
         (
             const label index,
             const label offset,
@@ -191,6 +174,26 @@ public:
             scalarField& weights,
             vectorField& centres,
             bool output = false
+        ) const;
+
+        // Return true if accumulated weights are consistent
+        bool consistent(const scalar tolerance) const;
+
+        // Set the normFactor
+        void setNormFactor(const scalar normFactor);
+
+        // Return the normFactor
+        scalar normFactor() const;
+
+        // Normalize stored weights
+        void normalize(const bool normSum) const;
+
+        // Extract weights and centres to lists
+        void populateLists
+        (
+            labelList& parents,
+            vectorField& centres,
+            scalarField& weights
         ) const;
 
         // Write out connectivity information to disk

@@ -108,12 +108,6 @@ faceSetAlgorithm::faceSetAlgorithm
 
 void faceSetAlgorithm::computeNormFactor(const label index) const
 {
-    // Clear existing fields
-    parents_.clear();
-
-    centres_.clear();
-    weights_.clear();
-
     // Compute refNorm and normFactor
     refNorm_ = newFaces_[index].normal(newPoints_);
     refCentre_ = newFaces_[index].centre(newPoints_);
@@ -153,6 +147,12 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
 // Find the nearest mapping candidates
 void faceSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
 {
+    // Clear existing fields
+    parents_.clear();
+
+    centres_.clear();
+    weights_.clear();
+
     // Clear the input list
     mapCandidates.clear();
 

@@ -102,12 +102,6 @@ cellSetAlgorithm::cellSetAlgorithm
 
 void cellSetAlgorithm::computeNormFactor(const label index) const
 {
-    // Clear existing fields
-    parents_.clear();
-
-    centres_.clear();
-    weights_.clear();
-
     // Compute volume / centre
     meshOps::cellCentreAndVolume
     (
@@ -135,6 +129,12 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
 // Find the nearest mapping candidates
 void cellSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
 {
+    // Clear existing fields
+    parents_.clear();
+
+    centres_.clear();
+    weights_.clear();
+
     // Clear the input list
     mapCandidates.clear();
 

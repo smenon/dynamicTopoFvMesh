@@ -100,12 +100,6 @@ pointSetAlgorithm::pointSetAlgorithm
 
 void pointSetAlgorithm::computeNormFactor(const label index) const
 {
-    // Clear existing fields
-    parents_.clear();
-
-    centres_.clear();
-    weights_.clear();
-
     const SearchTreeType& tree = searchTree();
 
     pointIndexHit pHit = tree.findNearest(newPoints_[index], GREAT);
@@ -136,6 +130,12 @@ void pointSetAlgorithm::computeNormFactor(const label index) const
 // Find the nearest mapping candidates
 void pointSetAlgorithm::findMappingCandidates(labelList& mapCandidates) const
 {
+    // Clear existing fields
+    parents_.clear();
+
+    centres_.clear();
+    weights_.clear();
+
     // Clear the input list
     mapCandidates.clear();
 

@@ -345,69 +345,7 @@ void convexSetAlgorithm::computeWeights
 }
 
 
-// Output an entity as a VTK file
-void convexSetAlgorithm::writeVTK
-(
-    const word& name,
-    const label entity,
-    const label primitiveType,
-    const bool useOldConnectivity
-) const
-{
-    writeVTK
-    (
-        name,
-        labelList(1, entity),
-        primitiveType,
-        useOldConnectivity
-    );
-}
-
-
-// Output a list of entities as a VTK file
-void convexSetAlgorithm::writeVTK
-(
-    const word& name,
-    const labelList& cList,
-    const label primitiveType,
-    const bool useOldConnectivity
-) const
-{
-    if (useOldConnectivity)
-    {
-        const polyMesh& mesh = this->mesh_;
-
-        meshOps::writeVTK
-        (
-            mesh,
-            name,
-            cList,
-            primitiveType,
-            mesh.points(),
-            mesh.edges(),
-            mesh.faces(),
-            mesh.cells(),
-            mesh.faceOwner()
-        );
-    }
-    else
-    {
-        meshOps::writeVTK
-        (
-            this->mesh_,
-            name,
-            cList,
-            primitiveType,
-            newPoints_,
-            newEdges_,
-            newFaces_,
-            newCells_,
-            newOwner_
-        );
-    }
-}
-
-
+// Return true if accumulated weights are consistent
 bool convexSetAlgorithm::consistent(const scalar tolerance) const
 {
     if (weights_.size())
@@ -428,6 +366,13 @@ bool convexSetAlgorithm::consistent(const scalar tolerance) const
 }
 
 
+// Set the normFactor
+void convexSetAlgorithm::setNormFactor(const scalar normFactor)
+{
+    normFactor_ = normFactor;
+}
+
+
 // Return the normFactor
 scalar convexSetAlgorithm::normFactor() const
 {
@@ -436,7 +381,7 @@ scalar convexSetAlgorithm::normFactor() const
 
 
 // Normalize stored weights
-void convexSetAlgorithm::normalize(bool normSum) const
+void convexSetAlgorithm::normalize(const bool normSum) const
 {
     if (normSum)
     {
@@ -601,6 +546,69 @@ bool convexSetAlgorithm::write() const
     );
 
     return true;
+}
+
+
+// Output an entity as a VTK file
+void convexSetAlgorithm::writeVTK
+(
+    const word& name,
+    const label entity,
+    const label primitiveType,
+    const bool useOldConnectivity
+) const
+{
+    writeVTK
+    (
+        name,
+        labelList(1, entity),
+        primitiveType,
+        useOldConnectivity
+    );
+}
+
+
+// Output a list of entities as a VTK file
+void convexSetAlgorithm::writeVTK
+(
+    const word& name,
+    const labelList& cList,
+    const label primitiveType,
+    const bool useOldConnectivity
+) const
+{
+    if (useOldConnectivity)
+    {
+        const polyMesh& mesh = this->mesh_;
+
+        meshOps::writeVTK
+        (
+            mesh,
+            name,
+            cList,
+            primitiveType,
+            mesh.points(),
+            mesh.edges(),
+            mesh.faces(),
+            mesh.cells(),
+            mesh.faceOwner()
+        );
+    }
+    else
+    {
+        meshOps::writeVTK
+        (
+            this->mesh_,
+            name,
+            cList,
+            primitiveType,
+            newPoints_,
+            newEdges_,
+            newFaces_,
+            newCells_,
+            newOwner_
+        );
+    }
 }
 
 
