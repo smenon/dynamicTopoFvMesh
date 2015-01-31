@@ -36,6 +36,7 @@ License
 
 #include "faceSetAlgorithm.H"
 #include "cellSetAlgorithm.H"
+#include "pointSetAlgorithm.H"
 
 namespace Foam
 {
@@ -310,6 +311,15 @@ void coupledInfo<MeshType>::setMesh
 }
 
 
+// Set the pointAlgorithm
+template <class MeshType>
+inline void
+coupledInfo<MeshType>::setPointAlgorithm(pointSetAlgorithm* algorithm)
+{
+    pointAlgorithm_.set(algorithm);
+}
+
+
 // Set the faceAlgorithm
 template <class MeshType>
 inline void
@@ -387,6 +397,22 @@ template <class MeshType>
 const coupleMap& coupledInfo<MeshType>::map() const
 {
     return map_;
+}
+
+
+// Return a const reference to the pointAlgorithm
+template <class MeshType>
+inline const pointSetAlgorithm&
+coupledInfo<MeshType>::pointAlgorithm() const
+{
+    if (!pointAlgorithm_.valid())
+    {
+        FatalErrorIn("const pointSetAlgorithm& coupledInfo::pointAlgorithm()")
+            << " Algorithm pointer has not been set."
+            << abort(FatalError);
+    }
+
+    return pointAlgorithm_();
 }
 
 

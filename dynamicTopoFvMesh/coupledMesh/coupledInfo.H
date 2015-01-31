@@ -52,6 +52,7 @@ namespace Foam
 class fvBoundaryMesh;
 class faceSetAlgorithm;
 class cellSetAlgorithm;
+class pointSetAlgorithm;
 
 /*---------------------------------------------------------------------------*\
                          Class coupledInfo Declaration
@@ -74,6 +75,9 @@ class coupledInfo
 
         // Auto pointer to the faceSetAlgorithm
         autoPtr<faceSetAlgorithm> faceAlgorithm_;
+
+        // Auto pointer to the pointSetAlgorithm
+        autoPtr<pointSetAlgorithm> pointAlgorithm_;
 
         // Flag to determine whether maps have been built.
         bool builtMaps_;
@@ -131,6 +135,9 @@ public:
         // Set a new subMesh
         inline void setMesh(label index, MeshType* mesh);
 
+        // Set the pointAlgorithm
+        inline void setPointAlgorithm(pointSetAlgorithm* algorithm);
+
         // Set the faceAlgorithm
         inline void setFaceAlgorithm(faceSetAlgorithm* algorithm);
 
@@ -154,6 +161,9 @@ public:
 
         // Return a const reference to the coupleMap
         inline const coupleMap& map() const;
+
+        // Return a reference to the pointAlgorithm
+        inline const pointSetAlgorithm& pointAlgorithm() const;
 
         // Return a reference to the faceAlgorithm
         inline const faceSetAlgorithm& faceAlgorithm() const;

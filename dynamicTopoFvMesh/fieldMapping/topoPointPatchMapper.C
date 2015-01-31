@@ -130,6 +130,7 @@ void topoPointPatchMapper::calcInsertedAddressing() const
                     << " Found an master point that doesn't belong to the patch"
                     << nl << " Point: " << pIndex
                     << nl << " Master: " << oldIndex
+                    << nl << " MasterObjects: " << mo
                     << nl << " Patch: " << patch_.name()
                     << abort(FatalError);
             }

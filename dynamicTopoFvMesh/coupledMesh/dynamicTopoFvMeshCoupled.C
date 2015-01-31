@@ -9929,6 +9929,21 @@ void dynamicTopoFvMesh::initCoupledWeights()
         // Fetch reference to subMesh
         const dynamicTopoFvMesh& mesh = recvMesh.subMesh();
 
+        // Set the point algorithm
+        recvMesh.setPointAlgorithm
+        (
+            new pointSetAlgorithm
+            (
+                mesh,
+                oldPoints_,
+                edges_,
+                faces_,
+                cells_,
+                owner_,
+                neighbour_
+            )
+        );
+
         // Set the face algorithm
         recvMesh.setFaceAlgorithm
         (
