@@ -946,7 +946,6 @@ label dynamicTopoFvMesh::insertPoint
 (
     const point& newPoint,
     const point& oldPoint,
-    const labelList& mapPoints,
     const label zoneID
 )
 {

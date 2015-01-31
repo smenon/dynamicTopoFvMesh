@@ -641,7 +641,6 @@ class dynamicTopoFvMesh
         (
             const point& newPoint,
             const point& oldPoint,
-            const labelList& mapPoints,
             const label zoneID = -1
         );
 

@@ -2397,8 +2397,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                                 insertPoint
                                 (
                                     pointJ,
-                                    meshJ.oldPoints_[pItJ.key()],
-                                    labelList(1, -1)
+                                    meshJ.oldPoints_[pItJ.key()]
                                 )
                             );
 
@@ -2491,8 +2490,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 insertPoint
                 (
                     pointI,
-                    meshI.oldPoints_[pItI.key()],
-                    labelList(1, -1)
+                    meshI.oldPoints_[pItI.key()]
                 )
             );
 

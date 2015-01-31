@@ -633,7 +633,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     otherEdgePoint[0] = commonEdges[0].otherVertex(nextToOtherPoint[0]);
     otherEdgePoint[1] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
 
-    labelList mP(2, -1);
+    FixedList<label, 2> mP;
 
     // Set mapping for this point
     mP[0] = commonEdges[0][0];
@@ -645,8 +645,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         insertPoint
         (
             0.5 * (points_[mP[0]] + points_[mP[1]]),
-            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]]),
-            mP
+            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]])
         )
     );
 
@@ -659,8 +658,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         insertPoint
         (
             0.5 * (points_[mP[0]] + points_[mP[1]]),
-            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]]),
-            mP
+            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]])
         )
     );
 
@@ -2839,7 +2837,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         }
     }
 
-    labelList mP(2, -1);
+    FixedList<label, 2> mP;
 
     // Set mapping for this point
     mP[0] = edges_[eIndex][0];
@@ -2851,8 +2849,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         insertPoint
         (
             0.5 * (points_[mP[0]] + points_[mP[1]]),
-            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]]),
-            mP
+            0.5 * (oldPoints_[mP[0]] + oldPoints_[mP[1]])
         )
     );
 
@@ -4828,7 +4825,7 @@ const changeMap dynamicTopoFvMesh::addCellLayer
         addedCells.insert(cIndex, labelPair(newCellIndex, 0));
     }
 
-    labelList mP(2, -1);
+    FixedList<label, 2> mP;
 
     forAll(patchFaces, indexI)
     {
@@ -4882,13 +4879,12 @@ const changeMap dynamicTopoFvMesh::addCellLayer
                 insertPoint
                 (
                     0.5 * (points_[mP[0]] + points_[mP[1]]),
-                    oldPoints_[mP[0]],
-                    mP
+                    oldPoints_[mP[0]]
                 )
             );
 
             // Update maps
-            map.addPoint(newPointIndex, mP);
+            map.addPoint(newPointIndex, labelList(1, pIndex));
             addedPoints.insert(pIndex, newPointIndex);
         }
 
@@ -5354,7 +5350,7 @@ void dynamicTopoFvMesh::splitInternalFaces
         point newPoint = points_[pIter.key()];
         point oldPoint = oldPoints_[pIter.key()];
 
-        pIter() = insertPoint(newPoint, oldPoint, labelList(1, pIter.key()));
+        pIter() = insertPoint(newPoint, oldPoint);
 
         if (is3D())
         {
