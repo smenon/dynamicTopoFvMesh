@@ -283,25 +283,43 @@ void dynamicTopoFvMesh::computeMapping
         }
         else
         {
-            const scalar factor = pointFactors_[pointI];
+            const mapPointPair& pair = pointFactors_[pointI];
 
-            // Set the algorithm refCentre / normFactor
-            pointAlgorithm.setRefCentre(pIndex);
-            pointAlgorithm.setNormFactor(factor);
+            // Check for coupled mapping
+            if (pair.second() == labelPair(-1, -1))
+            {
+                // Set the algorithm refCentre / normFactor
+                pointAlgorithm.setRefCentre(pIndex);
+                pointAlgorithm.setNormFactor(pair.first());
 
-            // Find the nearest candidates for mapping
-            pointAlgorithm.findMappingCandidates(mapCandidates);
+                // Find the nearest candidates for mapping
+                pointAlgorithm.findMappingCandidates(mapCandidates);
 
-            // Normalize using sum of weights
-            pointAlgorithm.normalize(true);
+                // Normalize using sum of weights
+                pointAlgorithm.normalize(true);
 
-            // Populate lists
-            pointAlgorithm.populateLists
-            (
-                masterObjects,
-                pointCentres_[pointI],
-                pointWeights_[pointI]
-            );
+                // Populate lists
+                pointAlgorithm.populateLists
+                (
+                    masterObjects,
+                    pointCentres_[pointI],
+                    pointWeights_[pointI]
+                );
+            }
+            else
+            {
+                // Get contribution from subMeshes.
+                computeCoupledWeights
+                (
+                    pIndex,
+                    pointAlgorithm.dimension(),
+                    masterObjects,
+                    pointWeights_[pointI],
+                    pointCentres_[pointI],
+                    false,
+                    pointI
+                );
+            }
 
             // Compute error
             scalar error = mag(1.0 - sum(pointWeights_[pointI]));
@@ -553,7 +571,7 @@ void dynamicTopoFvMesh::threadedMapping
     pointFactors_.setSize(pointParents_.size());
     pointsFromPoints_.setSize(pointParents_.size());
 
-    forAllConstIter(Map<scalar>, pointParents_, pIter)
+    forAllConstIter(Map<mapPointPair>, pointParents_, pIter)
     {
         pointFactors_[nPointsFromPoints] = pIter();
         pointsFromPoints_[nPointsFromPoints].index() = pIter.key();
@@ -815,17 +833,17 @@ void dynamicTopoFvMesh::setFaceMapping
 void dynamicTopoFvMesh::setPointMapping
 (
     const label pIndex,
-    const scalar factor
+    const mapPointPair& pair
 )
 {
     if (debug > 3)
     {
         Pout<< "Inserting mapping point: " << pIndex
-            << " factor: " << factor << endl;
+            << " pair: " << pair << endl;
     }
 
     // Update point-parents information
-    pointParents_.set(pIndex, factor);
+    pointParents_.set(pIndex, pair);
 }
 
 

@@ -4955,14 +4955,15 @@ const changeMap dynamicTopoFvMesh::collapseEdge
             checkPoints[0] = replacePoint;
             checkPoints[1] = collapsePoint;
 
-            // Compute a mapping factor
+            // Create a mapping pair
             const scalar rSqrDist = Foam::magSqr(orPoint - oldPoint);
             const scalar cSqrDist = Foam::magSqr(ocPoint - oldPoint);
             const scalar factor = 1.01 * Foam::max(rSqrDist, cSqrDist);
+            const mapPointPair pair(factor, labelPair(-1, -1));
 
             // Set point mapping, since we need to interpolate
             // values at the new mid-point location
-            setPointMapping(replacePoint, factor);
+            setPointMapping(replacePoint, pair);
 
             break;
         }

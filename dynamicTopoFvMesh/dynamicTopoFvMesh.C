@@ -946,7 +946,7 @@ label dynamicTopoFvMesh::insertPoint
 (
     const point& newPoint,
     const point& oldPoint,
-    const scalar factor,
+    const mapPointPair& pair,
     const label zoneID
 )
 {
@@ -967,7 +967,7 @@ label dynamicTopoFvMesh::insertPoint
     }
 
     // Make a pointParents entry
-    setPointMapping(newPointIndex, factor);
+    setPointMapping(newPointIndex, pair);
 
     // Add an empty entry to pointEdges as well.
     // This entry can be sized-up appropriately at a later stage.
@@ -1057,7 +1057,7 @@ void dynamicTopoFvMesh::removePoint
     }
 
     // Remove from pointParents list, if necessary
-    Map<scalar>::iterator ppsit = pointParents_.find(pIndex);
+    Map<mapPointPair>::iterator ppsit = pointParents_.find(pIndex);
 
     if (ppsit != pointParents_.end())
     {

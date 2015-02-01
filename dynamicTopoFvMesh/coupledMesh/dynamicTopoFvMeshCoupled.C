@@ -2347,9 +2347,6 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         }
     }
 
-    // Compute a mapping factor for all unique / merged points
-    const scalar factor = (0.1 * sqrEdgeLength);
-
     // Insert all points, with merging if necessary
     forAll(pointsToInsert, pI)
     {
@@ -2392,6 +2389,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     {
                         if (pItJ() == -1)
                         {
+                            // Create a mapping pair
+                            mapPointPair pair(0.0, labelPair(pJ, pItJ.key()));
+
                             // Make a merge entry
                             label mergePointIndex =
                             (
@@ -2399,7 +2399,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                                 (
                                     pointJ,
                                     meshJ.oldPoints_[pItJ.key()],
-                                    factor
+                                    pair
                                 )
                             );
 
@@ -2486,6 +2486,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 continue;
             }
 
+            // Create a mapping pair
+            const mapPointPair pair(0.0, labelPair(pI, pItI.key()));
+
             // Add a new unique point
             label newPointIndex =
             (
@@ -2493,7 +2496,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 (
                     pointI,
                     meshI.oldPoints_[pItI.key()],
-                    factor
+                    pair
                 )
             );
 
@@ -10000,7 +10003,8 @@ void dynamicTopoFvMesh::computeCoupledWeights
     labelList& parents,
     scalarField& weights,
     vectorField& centres,
-    bool output
+    bool output,
+    label pIndex
 )
 {
     if (!Pstream::parRun())
@@ -10012,6 +10016,23 @@ void dynamicTopoFvMesh::computeCoupledWeights
     const labelList& cStarts = mapper_->cellStarts();
     const labelListList& pSizes = mapper_->patchSizes();
 
+    if (dimension == 0)
+    {
+        // Fetch the mapping pair for this point
+        const labelPair& pair = pointFactors_[pIndex].second();
+
+        const label pI = pair.first();
+        const label mapPoint = pair.second();
+
+        const coupledMesh& recvMesh = recvMeshes_[pI];
+        const dynamicTopoFvMesh& mesh = recvMesh.subMesh();
+
+        // Set mapping with offsets
+        parents.setSize(1, mapPoint);
+        weights.setSize(1, 1.0);
+        centres.setSize(1, mesh.oldPoints_[mapPoint]);
+    }
+    else
     if (dimension == 2)
     {
         label patchIndex = whichPatch(index);

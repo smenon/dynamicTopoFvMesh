@@ -50,6 +50,8 @@ SourceFiles
 #define dynamicTopoFvMesh_H
 
 #include "Switch.H"
+#include "Tuple2.H"
+#include "labelPair.H"
 #include "tetMetric.H"
 #include "topoMapper.H"
 #include "DynamicField.H"
@@ -85,6 +87,7 @@ class dynamicTopoFvMesh
     // Private typedefs
 
         typedef Map<label> labelMap;
+        typedef Tuple2<scalar, labelPair> mapPointPair;
         typedef coupledInfo<dynamicTopoFvMesh> coupledMesh;
         typedef threadHandler<dynamicTopoFvMesh> meshHandler;
 
@@ -216,8 +219,8 @@ class dynamicTopoFvMesh
         Map<label> addedCellZones_;
 
         // Information for field-mapping
-        Map<scalar> pointParents_;
-        List<scalar> pointFactors_;
+        Map<mapPointPair> pointParents_;
+        List<mapPointPair> pointFactors_;
         List<scalarField> pointWeights_;
         List<vectorField> pointCentres_;
 
@@ -364,7 +367,11 @@ class dynamicTopoFvMesh
         void setFaceMapping(const label fIndex);
 
         // Set fill-in mapping information for a particular point
-        void setPointMapping(const label pIndex, const scalar factor);
+        void setPointMapping
+        (
+            const label pIndex,
+            const mapPointPair& pair
+        );
 
         // Initialize mesh edges and related connectivity lists
         void initEdges();
@@ -642,7 +649,7 @@ class dynamicTopoFvMesh
         (
             const point& newPoint,
             const point& oldPoint,
-            const scalar factor,
+            const mapPointPair& pair,
             const label zoneID = -1
         );
 
@@ -990,7 +997,8 @@ class dynamicTopoFvMesh
             labelList& parents,
             scalarField& weights,
             vectorField& centres,
-            bool output = false
+            bool output = false,
+            label pIndex = -1
         );
 
         // Fetch length-scale info for processor entities

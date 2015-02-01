@@ -191,6 +191,12 @@ public:
         // Set the normFactor
         void setNormFactor(const scalar normFactor) const;
 
+        // Return the refNorm
+        const vector& refNorm() const;
+
+        // Return the refCentre
+        const vector& refCentre() const;
+
         // Return the normFactor
         scalar normFactor() const;
 

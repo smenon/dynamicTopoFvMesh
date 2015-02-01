@@ -394,6 +394,20 @@ void convexSetAlgorithm::setNormFactor(const scalar normFactor) const
 }
 
 
+// Return the refNorm
+const vector& convexSetAlgorithm::refNorm() const
+{
+    return refNorm_;
+}
+
+
+// Return the refCentre
+const vector& convexSetAlgorithm::refCentre() const
+{
+    return refCentre_;
+}
+
+
 // Return the normFactor
 scalar convexSetAlgorithm::normFactor() const
 {

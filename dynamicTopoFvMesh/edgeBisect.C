@@ -665,7 +665,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         0.5 * (o10Point + o11Point)
     };
 
-    // Compute mapping factors
+    // Create mapping pairs
     const scalar pSqrDist[4] =
     {
         Foam::magSqr(o00Point - oMidPoint[0]),
@@ -680,9 +680,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         1.01 * Foam::max(pSqrDist[2], pSqrDist[3])
     };
 
+    const mapPointPair pair[2] =
+    {
+        mapPointPair(factor[0], labelPair(-1, -1)),
+        mapPointPair(factor[1], labelPair(-1, -1))
+    };
+
     // Add two new points to the end of the list
-    newPointIndex[0] = insertPoint(nMidPoint[0], oMidPoint[0], factor[0]);
-    newPointIndex[1] = insertPoint(nMidPoint[1], oMidPoint[1], factor[1]);
+    newPointIndex[0] = insertPoint(nMidPoint[0], oMidPoint[0], pair[0]);
+    newPointIndex[1] = insertPoint(nMidPoint[1], oMidPoint[1], pair[1]);
 
     // Add the points to the map. Since this might require master mapping,
     // first check to see if a slave is being bisected.
@@ -2882,10 +2888,12 @@ const changeMap dynamicTopoFvMesh::bisectEdge
         Foam::magSqr(o1Point - oMidPoint)
     };
 
+    // Create a mapping pair
     const scalar factor = 1.01 * Foam::max(pSqrDist[0], pSqrDist[1]);
+    const mapPointPair pair(factor, labelPair(-1, -1));
 
     // Add a new point to the end of the list
-    label newPointIndex = insertPoint(nMidPoint, oMidPoint, factor);
+    label newPointIndex = insertPoint(nMidPoint, oMidPoint, pair);
 
     // Add this point to the map.
     map.addPoint(newPointIndex);
@@ -4916,11 +4924,12 @@ const changeMap dynamicTopoFvMesh::addCellLayer
             const point& oPoint = oldPoints_[mP[0]];
             const point nMidPoint = 0.5 * (n0Point + n1Point);
 
-            // Compute mapping factor
+            // Create a mapping pair
             const scalar factor = 0.1 * Foam::magSqr(nMidPoint - oPoint);
+            const mapPointPair pair = mapPointPair(factor, labelPair(-1, -1));
 
             // Add a new point to the end of the list
-            label newPointIndex = insertPoint(nMidPoint, oPoint, factor);
+            label newPointIndex = insertPoint(nMidPoint, oPoint, pair);
 
             // Update maps
             map.addPoint(newPointIndex, labelList(1, pIndex));
@@ -5389,7 +5398,10 @@ void dynamicTopoFvMesh::splitInternalFaces
         const point newPoint = points_[pIter.key()];
         const point oldPoint = oldPoints_[pIter.key()];
 
-        pIter() = insertPoint(newPoint, oldPoint, 0.0);
+        // Create a mapping pair
+        const mapPointPair pair(0.0, labelPair(-1, -1));
+
+        pIter() = insertPoint(newPoint, oldPoint, pair);
 
         if (is3D())
         {
