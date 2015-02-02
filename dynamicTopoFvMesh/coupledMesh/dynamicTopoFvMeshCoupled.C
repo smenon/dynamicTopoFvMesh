@@ -4581,13 +4581,25 @@ void dynamicTopoFvMesh::handleCoupledPatches
         labelList faceSizes(nProcs, 0), faceStarts(nProcs, 0);
         labelListList patchSizes(nProcs, labelList(nPhysical, 0));
         labelListList patchStarts(nProcs, labelList(nPhysical, 0));
+        labelListList pointPatchSizes(nProcs, labelList(nPhysical, 0));
+        labelListList pointPatchStarts(nProcs, labelList(nPhysical, 0));
 
         label nTotalCells = nOldCells_, nTotalIntFaces = nOldInternalFaces_;
-        labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhysical));
+        labelList nTotalPatchFaces(nPhysical), nTotalPatchPoints(nPhysical);
+
+        for (label patchI = 0; patchI < nPhysical; patchI++)
+        {
+            const polyPatch& patch = boundary[patchI];
+
+            nTotalPatchFaces[patchI] = patch.size();
+            nTotalPatchPoints[patchI] = patch.nPoints();
+        }
 
         forAll(procIndices_, pI)
         {
             const coupleMap& cMap = recvMeshes_[pI].map();
+            const dynamicTopoFvMesh& mesh = recvMeshes_[pI].subMesh();
+            const polyBoundaryMesh& sMeshBoundary = mesh.boundaryMesh();
 
             // Fetch size from subMesh
             label nCells = cMap.nEntities(coupleMap::CELL);
@@ -4604,24 +4616,25 @@ void dynamicTopoFvMesh::handleCoupledPatches
             nTotalCells += nCells;
             nTotalIntFaces += nIntFaces;
 
-            // Fetch patch sizes from subMesh
-            const labelList& nPatchFaces =
-            (
-                cMap.entityBuffer(coupleMap::FACE_SIZES)
-            );
-
             // Loop over physical patches
             forAll(nTotalPatchFaces, patchI)
             {
                 // Fetch patch size from subMesh
-                label nFaces = nPatchFaces[patchI];
+                const polyPatch& patch = sMeshBoundary[patchI];
+
+                const label nFaces = patch.size();
+                const label nPoints = patch.nPoints();
 
                 // Set patch size / offset for this processor
                 patchSizes[pI][patchI] = nFaces;
                 patchStarts[pI][patchI] = nTotalPatchFaces[patchI];
 
+                pointPatchSizes[pI][patchI] = nPoints;
+                pointPatchStarts[pI][patchI] = nTotalPatchPoints[patchI];
+
                 // Update patch count
                 nTotalPatchFaces[patchI] += nFaces;
+                nTotalPatchPoints[patchI] += nPoints;
             }
         }
 
@@ -4633,22 +4646,29 @@ void dynamicTopoFvMesh::handleCoupledPatches
             faceSizes,
             faceStarts,
             patchSizes,
-            patchStarts
+            patchStarts,
+            pointPatchSizes,
+            pointPatchStarts
         );
 
         if (debug > 3)
         {
             SubList<label> physicalPatches(oldPatchSizes_, nPhysical);
 
-            Pout<< " procIndices: " << procIndices_ << nl
-                << " nCells: " << nOldCells_ << nl
-                << " proc cellSizes: " << cellSizes << nl
-                << " cellStarts: " << cellStarts << nl
-                << " proc faceSizes: " << faceSizes << nl
-                << " faceStarts: " << faceStarts << nl
-                << " patchSizes: " << physicalPatches << nl
-                << " proc patchSizes: " << patchSizes << nl
-                << " patchStarts: " << patchStarts << endl;
+            Pout<< " ---------------------------------------- " << nl
+                << "  procIndices: " << procIndices_ << nl
+                << "  nCells: " << nOldCells_ << nl
+                << "  cellSizes: " << cellSizes << nl
+                << "  cellStarts: " << cellStarts << nl
+                << "  faceSizes: " << faceSizes << nl
+                << "  faceStarts: " << faceStarts << nl
+                << "  physicalPatches: " << physicalPatches << nl
+                << "  patchSizes: " << patchSizes << nl
+                << "  patchStarts: " << patchStarts << nl
+                << "  pointPatchSizes: " << pointPatchSizes << nl
+                << "  pointPatchStarts: " << pointPatchStarts << nl
+                << " ---------------------------------------- "
+                << endl;
         }
     }
 

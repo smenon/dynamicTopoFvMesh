@@ -136,6 +136,8 @@ class topoMapper
         mutable labelList faceStarts_;
         mutable labelListList patchSizes_;
         mutable labelListList patchStarts_;
+        mutable labelListList pointPatchSizes_;
+        mutable labelListList pointPatchStarts_;
 
     // Private Member Functions
 
@@ -246,7 +248,9 @@ public:
             const labelList& faceSizes,
             const labelList& faceStarts,
             const labelListList& patchSizes,
-            const labelListList& patchStarts
+            const labelListList& patchStarts,
+            const labelListList& pointPatchSizes,
+            const labelListList& pointPatchStarts
         ) const;
 
         //- Fetch point weights
@@ -276,6 +280,9 @@ public:
         //- Fetch patch sizes
         const labelListList& patchSizes() const;
 
+        //- Fetch point patch sizes
+        const labelListList& pointPatchSizes() const;
+
         //- Fetch cell starts
         const labelList& cellStarts() const;
 
@@ -284,6 +291,9 @@ public:
 
         //- Fetch patch starts
         const labelListList& patchStarts() const;
+
+        //- Fetch point patch starts
+        const labelListList& pointPatchStarts() const;
 
         // Store old-time information for all registered fields
         void storeOldTimes() const;

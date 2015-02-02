@@ -327,7 +327,9 @@ void topoMapper::setOffsets
     const labelList& faceSizes,
     const labelList& faceStarts,
     const labelListList& patchSizes,
-    const labelListList& patchStarts
+    const labelListList& patchStarts,
+    const labelListList& pointPatchSizes,
+    const labelListList& pointPatchStarts
 ) const
 {
     cellSizes_ = cellSizes;
@@ -336,6 +338,8 @@ void topoMapper::setOffsets
     faceStarts_ = faceStarts;
     patchSizes_ = patchSizes;
     patchStarts_ = patchStarts;
+    pointPatchSizes_ = pointPatchSizes;
+    pointPatchStarts_ = pointPatchStarts;
 }
 
 
@@ -402,6 +406,13 @@ const labelListList& topoMapper::patchSizes() const
 }
 
 
+//- Fetch point patch sizes
+const labelListList& topoMapper::pointPatchSizes() const
+{
+    return pointPatchSizes_;
+}
+
+
 //- Fetch cell starts
 const labelList& topoMapper::cellStarts() const
 {
@@ -420,6 +431,13 @@ const labelList& topoMapper::faceStarts() const
 const labelListList& topoMapper::patchStarts() const
 {
     return patchStarts_;
+}
+
+
+//- Fetch point patch starts
+const labelListList& topoMapper::pointPatchStarts() const
+{
+    return pointPatchStarts_;
 }
 
 
@@ -727,7 +745,7 @@ void topoMapper::clear() const
     sGradPtrs_.clear();
     vGradPtrs_.clear();
 
-    // Wipe out geomtry information
+    // Wipe out geometry information
     deleteDemandDrivenData(cellVolumesPtr_);
     deleteDemandDrivenData(cellCentresPtr_);
 
@@ -749,6 +767,9 @@ void topoMapper::clear() const
 
     patchSizes_.clear();
     patchStarts_.clear();
+
+    pointPatchSizes_.clear();
+    pointPatchStarts_.clear();
 }
 
 
