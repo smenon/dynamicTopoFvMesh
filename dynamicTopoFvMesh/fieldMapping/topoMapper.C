@@ -286,8 +286,8 @@ void topoMapper::setMapper(const mapPolyMesh& mpm) const
 //- Set point weighting information
 void topoMapper::setPointWeights
 (
-    const Xfer<List<scalarField> >& weights,
-    const Xfer<List<vectorField> >& centres
+    const Xfer<scalarFieldList>& weights,
+    const Xfer<vectorFieldList>& centres
 ) const
 {
     pointWeights_.transfer(weights());
@@ -298,8 +298,8 @@ void topoMapper::setPointWeights
 //- Set face weighting information
 void topoMapper::setFaceWeights
 (
-    const Xfer<List<scalarField> >& weights,
-    const Xfer<List<vectorField> >& centres
+    const Xfer<scalarFieldList>& weights,
+    const Xfer<vectorFieldList>& centres
 ) const
 {
     faceWeights_.transfer(weights());
@@ -310,12 +310,22 @@ void topoMapper::setFaceWeights
 //- Set cell weighting information
 void topoMapper::setCellWeights
 (
-    const Xfer<List<scalarField> >& weights,
-    const Xfer<List<vectorField> >& centres
+    const Xfer<scalarFieldList>& weights,
+    const Xfer<vectorFieldList>& centres
 ) const
 {
     cellWeights_.transfer(weights());
     cellCentres_.transfer(centres());
+}
+
+
+//- Set old patch mesh points information
+void topoMapper::setOldPatchMeshPoints
+(
+    const Xfer<labelListList>& patchMeshPoints
+) const
+{
+    oldPatchMeshPoints_.transfer(patchMeshPoints());
 }
 
 
@@ -344,44 +354,51 @@ void topoMapper::setOffsets
 
 
 //- Fetch point weights
-const List<scalarField>& topoMapper::pointWeights() const
+const topoMapper::scalarFieldList& topoMapper::pointWeights() const
 {
     return pointWeights_;
 }
 
 
 //- Fetch face weights
-const List<scalarField>& topoMapper::faceWeights() const
+const topoMapper::scalarFieldList& topoMapper::faceWeights() const
 {
     return faceWeights_;
 }
 
 
 //- Fetch cell weights
-const List<scalarField>& topoMapper::cellWeights() const
+const topoMapper::scalarFieldList& topoMapper::cellWeights() const
 {
     return cellWeights_;
 }
 
 
 //- Fetch point centres
-const List<vectorField>& topoMapper::pointCentres() const
+const topoMapper::vectorFieldList& topoMapper::pointCentres() const
 {
     return pointCentres_;
 }
 
 
 //- Fetch face centres
-const List<vectorField>& topoMapper::faceCentres() const
+const topoMapper::vectorFieldList& topoMapper::faceCentres() const
 {
     return faceCentres_;
 }
 
 
 //- Fetch cell centres
-const List<vectorField>& topoMapper::cellCentres() const
+const topoMapper::vectorFieldList& topoMapper::cellCentres() const
 {
     return cellCentres_;
+}
+
+
+//- Fetch old patch mesh points information
+const labelListList& topoMapper::oldPatchMeshPoints() const
+{
+    return oldPatchMeshPoints_;
 }
 
 
@@ -770,6 +787,9 @@ void topoMapper::clear() const
 
     pointPatchSizes_.clear();
     pointPatchStarts_.clear();
+
+    // Clear old patch mesh points
+    oldPatchMeshPoints_.clear();
 }
 
 

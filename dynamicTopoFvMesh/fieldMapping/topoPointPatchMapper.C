@@ -35,6 +35,7 @@ Author
 
 \*---------------------------------------------------------------------------*/
 
+#include "meshOps.H"
 #include "topoMapper.H"
 #include "mapPolyMesh.H"
 #include "facePointPatch.H"
@@ -123,6 +124,16 @@ void topoPointPatchMapper::calcInsertedAddressing() const
 
             if (poIter == oldMeshPointMap.end())
             {
+                // Write out for post-processing
+                meshOps::writeVTK
+                (
+                    mpm_.mesh(),
+                    "patchPointPatchError_"
+                  + Foam::name(pObj.index()),
+                    labelList(1, pObj.index()),
+                    0, mpm_.mesh().points()
+                );
+
                 FatalErrorIn
                 (
                     "void topoPointPatchMapper::calcInsertedAddressing() const"
@@ -158,28 +169,9 @@ void topoPointPatchMapper::calcPatchMeshPointMap() const
             << abort(FatalError);
     }
 
-    typedef IOList<labelList> labelListIOList;
-    const word addrName("oldPatchMeshPoints");
-    const bool found = mpm_.mesh().foundObject<labelListIOList>(addrName);
-
-    if (!found)
-    {
-        FatalErrorIn
-        (
-            "void topoPointPatchMapper::calcPatchMeshPointMap() const"
-        )   << " Failed to find old patch mesh points in the object registry."
-            << nl << " The mesh is expected to register an object"
-            << nl << " of type: " << labelListIOList::typeName
-            << nl << " with the name: " << addrName
-            << nl << " Patch: " << patch_.name()
-            << abort(FatalError);
-    }
-
-    // Fetch the patch mesh points from the registry
-    const labelList& pMeshPoints =
-    (
-        mpm_.mesh().lookupObject<labelListIOList>(addrName)[patch_.index()]
-    );
+    // Fetch the mesh points for this patch
+    const label patchIndex = patch_.index();
+    const labelList& pMeshPoints = tMapper_.oldPatchMeshPoints()[patchIndex];
 
     // Allocate the map
     patchMeshPointMapPtr_ = new Map<label>(2 * pMeshPoints.size());
@@ -360,11 +352,7 @@ topoPointPatchMapper::topoPointPatchMapper
     mpm_(mpm),
     tMapper_(mapper),
     direct_(false),
-    sizeBeforeMapping_
-    (
-        patch_.index() < mpm.oldPatchNMeshPoints().size()
-      ? mpm.oldPatchNMeshPoints()[patch_.index()] : 0
-    ),
+    sizeBeforeMapping_(0),
     directAddrPtr_(NULL),
     interpolationAddrPtr_(NULL),
     weightsPtr_(NULL),
@@ -372,6 +360,32 @@ topoPointPatchMapper::topoPointPatchMapper
     insertedPointAddressingPtr_(NULL),
     patchMeshPointMapPtr_(NULL)
 {
+    // Compute sizeBeforeMapping
+    {
+        label patchIndex = patch_.index();
+        label totalSize = mpm_.oldPatchNMeshPoints()[patchIndex];
+
+        // Fetch offset sizes from topoMapper
+        const labelListList& sizes = tMapper_.pointPatchSizes();
+
+        // Add offset sizes
+        if (sizes.size())
+        {
+            // Fetch number of physical patches
+            label nPhysical = sizes[0].size();
+
+            if (patchIndex < nPhysical)
+            {
+                forAll(sizes, pI)
+                {
+                    totalSize += sizes[pI][patchIndex];
+                }
+            }
+        }
+
+        sizeBeforeMapping_ = totalSize;
+    }
+
     // Check for the possibility of direct mapping
     if (insertedObjects())
     {

@@ -68,6 +68,16 @@ class topoPointBoundaryMapper;
 
 class topoMapper
 {
+
+public:
+
+    // Public typedefs
+
+        typedef List<scalarField> scalarFieldList;
+        typedef List<vectorField> vectorFieldList;
+
+private:
+
     // Private typedefs
 
         typedef Tuple2<word, label> GradientMap;
@@ -120,14 +130,14 @@ class topoMapper
         mutable bool disableGradients_;
 
         //- Intersection weights
-        mutable List<scalarField> pointWeights_;
-        mutable List<scalarField> faceWeights_;
-        mutable List<scalarField> cellWeights_;
+        mutable scalarFieldList pointWeights_;
+        mutable scalarFieldList faceWeights_;
+        mutable scalarFieldList cellWeights_;
 
         //- Intersection centres
-        mutable List<vectorField> pointCentres_;
-        mutable List<vectorField> faceCentres_;
-        mutable List<vectorField> cellCentres_;
+        mutable vectorFieldList pointCentres_;
+        mutable vectorFieldList faceCentres_;
+        mutable vectorFieldList cellCentres_;
 
         //- Sizes / starts for mapping
         mutable labelList cellSizes_;
@@ -138,6 +148,9 @@ class topoMapper
         mutable labelListList patchStarts_;
         mutable labelListList pointPatchSizes_;
         mutable labelListList pointPatchStarts_;
+
+        //- Old patch mesh points
+        mutable labelListList oldPatchMeshPoints_;
 
     // Private Member Functions
 
@@ -222,22 +235,28 @@ public:
         //- Set point weighting information
         void setPointWeights
         (
-            const Xfer<List<scalarField> >& weights,
-            const Xfer<List<vectorField> >& centres
+            const Xfer<scalarFieldList>& weights,
+            const Xfer<vectorFieldList>& centres
         ) const;
 
         //- Set face weighting information
         void setFaceWeights
         (
-            const Xfer<List<scalarField> >& weights,
-            const Xfer<List<vectorField> >& centres
+            const Xfer<scalarFieldList>& weights,
+            const Xfer<vectorFieldList>& centres
         ) const;
 
         //- Set cell weighting information
         void setCellWeights
         (
-            const Xfer<List<scalarField> >& weights,
-            const Xfer<List<vectorField> >& centres
+            const Xfer<scalarFieldList>& weights,
+            const Xfer<vectorFieldList>& centres
+        ) const;
+
+        //- Set old patch mesh points information
+        void setOldPatchMeshPoints
+        (
+            const Xfer<labelListList>& patchMeshPoints
         ) const;
 
         //- Set cell / patch offset information
@@ -254,22 +273,25 @@ public:
         ) const;
 
         //- Fetch point weights
-        const List<scalarField>& pointWeights() const;
+        const scalarFieldList& pointWeights() const;
 
         //- Fetch face weights
-        const List<scalarField>& faceWeights() const;
+        const scalarFieldList& faceWeights() const;
 
         //- Fetch cell weights
-        const List<scalarField>& cellWeights() const;
+        const scalarFieldList& cellWeights() const;
 
         //- Fetch point centres
-        const List<vectorField>& pointCentres() const;
+        const vectorFieldList& pointCentres() const;
 
         //- Fetch face centres
-        const List<vectorField>& faceCentres() const;
+        const vectorFieldList& faceCentres() const;
 
         //- Fetch cell centres
-        const List<vectorField>& cellCentres() const;
+        const vectorFieldList& cellCentres() const;
+
+        //- Fetch old patch mesh points information
+        const labelListList& oldPatchMeshPoints() const;
 
         //- Fetch cell sizes
         const labelList& cellSizes() const;

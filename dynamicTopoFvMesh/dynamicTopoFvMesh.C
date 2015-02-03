@@ -4175,20 +4175,10 @@ bool dynamicTopoFvMesh::resetMesh()
             << reOrderingTimer.elapsedTime() << " s"
             << endl;
 
-        // Define a registry entry for patch meshPoints
-        IOobject oldPatchMeshPointsIO
-        (
-            "oldPatchMeshPoints",
-            time().timeName(),
-            (*this),
-            IOobject::NO_READ,
-            IOobject::NO_WRITE
-        );
-
         // Obtain the patch-point maps before resetting the mesh
         labelList oldPatchNMeshPoints(nOldPatches);
         List<labelMap> oldPatchPointMaps(nOldPatches);
-        IOList<labelList> oldPatchMeshPoints(oldPatchMeshPointsIO, nOldPatches);
+        labelListList oldPatchMeshPoints(nOldPatches);
 
         forAll(oldPatchPointMaps, patchI)
         {
@@ -4215,6 +4205,11 @@ bool dynamicTopoFvMesh::resetMesh()
         (
             xferMove(cellWeights_),
             xferMove(cellCentres_)
+        );
+
+        fieldMapper.setOldPatchMeshPoints
+        (
+            xferMove(oldPatchMeshPoints)
         );
 
         // Reset the mesh, and specify a non-valid
