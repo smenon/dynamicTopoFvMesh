@@ -281,10 +281,25 @@ coupledInfo<MeshType>::subMeshPointMapper::subMeshPointMapper
 :
     sizeBeforeMapping_(cInfo.baseMesh().boundary()[patchI].patch().nPoints())
 {
-    const polyPatch& patch = cInfo.subMesh().boundary()[patchI].patch();
+    // Fetch the subMesh / baseMesh patches
+    const polyPatch& sPatch = cInfo.subMesh().boundary()[patchI].patch();
+    const polyPatch& bPatch = cInfo.baseMesh().boundary()[patchI].patch();
+
+    // Fetch meshPoints for this patch, and the pointMap for the subMesh
+    const labelList& sMeshPoints = sPatch.meshPoints();
+    const labelList& pointMap = cInfo.map().pointMap();
 
     // Prepare direct addressing
-    directAddressing_.setSize(patch.nPoints(), 0);
+    directAddressing_.setSize(sPatch.nPoints());
+
+    forAll(sMeshPoints, pointI)
+    {
+        const label sMeshIndex = sMeshPoints[pointI];
+        const label bMeshIndex = pointMap[sMeshIndex];
+        const label localIndex = bPatch.whichPoint(bMeshIndex);
+
+        directAddressing_[pointI] = localIndex;
+    }
 }
 
 
