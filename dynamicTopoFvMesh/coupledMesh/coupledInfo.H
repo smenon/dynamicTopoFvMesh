@@ -99,7 +99,7 @@ public:
 
     //- Forward declarations
 
-        class subMeshMapper;
+        class subMeshPatchMapper;
         class subMeshPointMapper;
 
     //- Constructors
@@ -242,27 +242,27 @@ public:
         ) const;
 
         // Resize map for individual field
-        template <class GeomField>
+        template <class GeomField, class Mapper>
         static void resizeMap
         (
             const label srcIndex,
-            const subMeshMapper& internalMapper,
+            const Mapper& internalMapper,
             const List<labelList>& internalReverseMaps,
-            const PtrList<subMeshMapper>& boundaryMapper,
+            const PtrList<Mapper>& boundaryMapper,
             const List<labelListList>& boundaryReverseMaps,
             const List<PtrList<GeomField> >& srcFields,
             GeomField& field
         );
 
         // Resize map for all fields in registry
-        template <class GeomField>
+        template <class GeomField, class Mapper>
         static void resizeMap
         (
             const wordList& fieldNames,
             const objectRegistry& mesh,
-            const subMeshMapper& internalMapper,
+            const Mapper& internalMapper,
             const List<labelList>& internalReverseMaps,
-            const PtrList<subMeshMapper>& boundaryMapper,
+            const PtrList<Mapper>& boundaryMapper,
             const List<labelListList>& boundaryReverseMaps,
             const List<PtrList<GeomField> >& srcFields
         );

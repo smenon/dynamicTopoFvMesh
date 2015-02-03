@@ -45,7 +45,7 @@ namespace Foam
 
 //- Generic subMesh mapper
 template <class MeshType>
-class coupledInfo<MeshType>::subMeshMapper
+class coupledInfo<MeshType>::subMeshPatchMapper
 :
     public fvPatchFieldMapper
 {
@@ -58,7 +58,7 @@ public:
     // Constructors
 
         //- Construct from components
-        inline subMeshMapper
+        inline subMeshPatchMapper
         (
             const label sbm,
             const labelList& da
@@ -69,7 +69,7 @@ public:
         {}
 
         //- Construct given addressing
-        inline subMeshMapper
+        inline subMeshPatchMapper
         (
             const coupledInfo& cInfo,
             const label patchI
@@ -77,7 +77,7 @@ public:
 
     // Destructor
 
-        virtual ~subMeshMapper()
+        virtual ~subMeshPatchMapper()
         {}
 
     // Member Functions
@@ -244,7 +244,7 @@ coupledInfo<MeshType>::coupledInfo
 
 //- Construct given addressing
 template <class MeshType>
-coupledInfo<MeshType>::subMeshMapper::subMeshMapper
+coupledInfo<MeshType>::subMeshPatchMapper::subMeshPatchMapper
 (
     const coupledInfo& cInfo,
     const label patchI
@@ -750,7 +750,7 @@ coupledInfo<MeshType>::subSetField
                     f.boundaryField()[patchI],
                     subMesh().boundary()[patchI],
                     subFld().dimensionedInternalField(),
-                    subMeshMapper(*this, patchI)
+                    subMeshPatchMapper(*this, patchI)
                 )
             );
         }
@@ -1161,13 +1161,13 @@ void coupledInfo<MeshType>::setField
 
 // Resize map for individual field
 template <class MeshType>
-template <class GeomField>
+template <class GeomField, class Mapper>
 void coupledInfo<MeshType>::resizeMap
 (
     const label srcIndex,
-    const subMeshMapper& internalMapper,
+    const Mapper& internalMapper,
     const List<labelList>& internalReverseMaps,
-    const PtrList<subMeshMapper>& boundaryMapper,
+    const PtrList<Mapper>& boundaryMapper,
     const List<labelListList>& boundaryReverseMaps,
     const List<PtrList<GeomField> >& srcFields,
     GeomField& field
@@ -1192,20 +1192,6 @@ void coupledInfo<MeshType>::resizeMap
     // Map physical boundary-fields
     forAll(boundaryMapper, patchI)
     {
-        if
-        (
-            field.boundaryField()[patchI].empty()
-         && boundaryMapper[patchI].directAddressing().size()
-         && field.boundaryField()[patchI].type() != emptyPolyPatch::typeName
-        )
-        {
-            // Artificially set the size prior to remap,
-            // since fvPatchField::autoMap appears to be
-            // assigning the field to patchInternalField
-            // (which is empty, since the patch is zero-sized)
-            field.boundaryField()[patchI].setSize(1);
-        }
-
         // autoMap the patchField
         field.boundaryField()[patchI].autoMap(boundaryMapper[patchI]);
 
@@ -1227,14 +1213,14 @@ void coupledInfo<MeshType>::resizeMap
 
 // Resize all fields in registry
 template <class MeshType>
-template <class GeomField>
+template <class GeomField, class Mapper>
 void coupledInfo<MeshType>::resizeMap
 (
     const wordList& names,
     const objectRegistry& mesh,
-    const subMeshMapper& internalMapper,
+    const Mapper& internalMapper,
     const List<labelList>& internalReverseMaps,
-    const PtrList<subMeshMapper>& boundaryMapper,
+    const PtrList<Mapper>& boundaryMapper,
     const List<labelListList>& boundaryReverseMaps,
     const List<PtrList<GeomField> >& srcFields
 )
@@ -1306,7 +1292,7 @@ void coupledInfo<MeshType>::resizeBoundaries
                     bf[patchI],
                     boundary[patchI],
                     field,
-                    subMeshMapper(oldPatchSize, identity(oldPatchSize))
+                    subMeshPatchMapper(oldPatchSize, identity(oldPatchSize))
                 )
             );
         }

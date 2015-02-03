@@ -4579,12 +4579,15 @@ void dynamicTopoFvMesh::handleCoupledPatches
         // Allocate cell, face and patch offsets
         labelList cellSizes(nProcs, 0), cellStarts(nProcs, 0);
         labelList faceSizes(nProcs, 0), faceStarts(nProcs, 0);
+        labelList pointSizes(nProcs, 0), pointStarts(nProcs, 0);
         labelListList patchSizes(nProcs, labelList(nPhysical, 0));
         labelListList patchStarts(nProcs, labelList(nPhysical, 0));
         labelListList pointPatchSizes(nProcs, labelList(nPhysical, 0));
         labelListList pointPatchStarts(nProcs, labelList(nPhysical, 0));
 
-        label nTotalCells = nOldCells_, nTotalIntFaces = nOldInternalFaces_;
+        label nTotalCells = nOldCells_;
+        label nTotalPoints = nOldPoints_;
+        label nTotalIntFaces = nOldInternalFaces_;
         labelList nTotalPatchFaces(nPhysical), nTotalPatchPoints(nPhysical);
 
         for (label patchI = 0; patchI < nPhysical; patchI++)
@@ -4603,6 +4606,7 @@ void dynamicTopoFvMesh::handleCoupledPatches
 
             // Fetch size from subMesh
             label nCells = cMap.nEntities(coupleMap::CELL);
+            label nPoints = cMap.nEntities(coupleMap::POINT);
             label nIntFaces = cMap.nEntities(coupleMap::INTERNAL_FACE);
 
             // Set size / offset for this processor
@@ -4612,8 +4616,12 @@ void dynamicTopoFvMesh::handleCoupledPatches
             faceSizes[pI] = nIntFaces;
             faceStarts[pI] = nTotalIntFaces;
 
+            pointSizes[pI] = nPoints;
+            pointStarts[pI] = nTotalPoints;
+
             // Update count
             nTotalCells += nCells;
+            nTotalPoints += nPoints;
             nTotalIntFaces += nIntFaces;
 
             // Loop over physical patches
@@ -8503,14 +8511,14 @@ void dynamicTopoFvMesh::syncFieldTransfers
     List<PtrList<pointSymmTensorField> > psytF(nProcs);
     List<PtrList<pointTensorField> > ptF(nProcs);
 
-    const polyBoundaryMesh& polyBoundary = boundaryMesh();
+    const polyBoundaryMesh& boundary = boundaryMesh();
 
     // Determine number of physical (non-processor) patches
     label nPhysical = 0;
 
-    forAll(polyBoundary, patchI)
+    forAll(boundary, patchI)
     {
-        if (isA<processorPolyPatch>(polyBoundary[patchI]))
+        if (isA<processorPolyPatch>(boundary[patchI]))
         {
             continue;
         }
@@ -8522,11 +8530,20 @@ void dynamicTopoFvMesh::syncFieldTransfers
     label nTotalCells = nOldCells_;
     label nTotalPoints = nOldPoints_;
     label nTotalIntFaces = nOldInternalFaces_;
-    labelList nTotalPatchFaces(SubList<label>(oldPatchSizes_, nPhysical));
+    labelList nTotalPatchFaces(nPhysical), nTotalPatchPoints(nPhysical);
+
+    for (label patchI = 0; patchI < nPhysical; patchI++)
+    {
+        const polyPatch& patch = boundary[patchI];
+
+        nTotalPatchFaces[patchI] = patch.size();
+        nTotalPatchPoints[patchI] = patch.nPoints();
+    }
 
     // Allocate reverse maps
     List<labelList> irvMaps(nProcs), irpMaps(nProcs), irsMaps(nProcs);
-    List<labelListList> brMaps(nProcs, labelListList(nPhysical));
+    List<labelListList> bfrMaps(nProcs, labelListList(nPhysical));
+    List<labelListList> bprMaps(nProcs, labelListList(nPhysical));
 
     forAll(procIndices_, pI)
     {
@@ -8543,9 +8560,12 @@ void dynamicTopoFvMesh::syncFieldTransfers
 
         // Count the number of additional entities
         const coupleMap& cMap = cInfo.map();
+        const dynamicTopoFvMesh& mesh = cInfo.subMesh();
+        const polyBoundaryMesh& sMeshBoundary = mesh.boundaryMesh();
 
         // Fetch size from subMesh
         label nCells = cMap.nEntities(coupleMap::CELL);
+        label nPoints = cMap.nEntities(coupleMap::POINT);
         label nIntFaces = cMap.nEntities(coupleMap::INTERNAL_FACE);
 
         // Set field pointers
@@ -8562,7 +8582,7 @@ void dynamicTopoFvMesh::syncFieldTransfers
         cInfo.setField(names[9], dict.subDict(types[9]), nIntFaces, stF[pI]);
 
         // Set point field pointers
-        label nP = cMap.nEntities(coupleMap::POINT);
+        const label nP = nPoints;
 
         cInfo.setPointField(names[10], dict.subDict(types[10]), nP, psF[pI]);
         cInfo.setPointField(names[11], dict.subDict(types[11]), nP, pvF[pI]);
@@ -8571,41 +8591,48 @@ void dynamicTopoFvMesh::syncFieldTransfers
         cInfo.setPointField(names[14], dict.subDict(types[14]), nP, ptF[pI]);
 
         // Set rmap for this processor
-        irpMaps[pI] = (labelField(identity(nP)) + nTotalPoints);
         irvMaps[pI] = (labelField(identity(nCells)) + nTotalCells);
+        irpMaps[pI] = (labelField(identity(nPoints)) + nTotalPoints);
         irsMaps[pI] = (labelField(identity(nIntFaces)) + nTotalIntFaces);
 
         // Update count
-        nTotalPoints += nP;
         nTotalCells += nCells;
+        nTotalPoints += nPoints;
         nTotalIntFaces += nIntFaces;
-
-        // Fetch patch sizes from subMesh
-        const labelList& nPatchFaces =
-        (
-            cMap.entityBuffer(coupleMap::FACE_SIZES)
-        );
 
         // Loop over physical patches
         forAll(nTotalPatchFaces, patchI)
         {
             // Fetch patch size from subMesh
-            label nFaces = nPatchFaces[patchI];
+            const polyPatch& patch = sMeshBoundary[patchI];
 
-            // Set rmap for this patch
-            brMaps[pI][patchI] =
+            // Fetch patch size from subMesh
+            const label nFaces = patch.size();
+            const label nPoints = patch.nPoints();
+
+            // Set face rmap for this patch
+            bfrMaps[pI][patchI] =
             (
                 labelField(identity(nFaces))
               + nTotalPatchFaces[patchI]
             );
 
-            // Update patch-face count
+            // Set point rmap for this patch
+            bprMaps[pI][patchI] =
+            (
+                labelField(identity(nPoints))
+              + nTotalPatchPoints[patchI]
+            );
+
+            // Update patch count
             nTotalPatchFaces[patchI] += nFaces;
+            nTotalPatchPoints[patchI] += nPoints;
         }
     }
 
     // Prepare internal mappers
     labelList cellAddressing(nTotalCells, 0);
+    labelList pointAddressing(nTotalPoints, 0);
     labelList faceAddressing(nTotalIntFaces, 0);
 
     // Set identity map for first nCells,
@@ -8615,6 +8642,13 @@ void dynamicTopoFvMesh::syncFieldTransfers
         cellAddressing[i] = i;
     }
 
+    // Set identity map for first nPoints,
+    // and map from point[0] for the rest
+    for (label i = 0; i < nOldPoints_; i++)
+    {
+        pointAddressing[i] = i;
+    }
+
     // Set identity map for first nIntFaces,
     // and map from face[0] for the rest
     for (label i = 0; i < nOldInternalFaces_; i++)
@@ -8622,59 +8656,99 @@ void dynamicTopoFvMesh::syncFieldTransfers
         faceAddressing[i] = i;
     }
 
-    coupledMesh::subMeshMapper vMap
+    coupledMesh::subMeshPatchMapper vMap
     (
         nOldCells_,
         cellAddressing
     );
 
-    coupledMesh::subMeshMapper sMap
+    coupledMesh::subMeshPointMapper pMap
+    (
+        nOldPoints_,
+        pointAddressing
+    );
+
+    coupledMesh::subMeshPatchMapper sMap
     (
         nOldInternalFaces_,
         faceAddressing
     );
 
     // Prepare boundary mappers
-    labelListList patchAddressing(nPhysical);
-    PtrList<coupledMesh::subMeshMapper> bMap(nPhysical);
+    labelListList patchFaceAddressing(nPhysical);
+    labelListList patchPointAddressing(nPhysical);
+    PtrList<coupledMesh::subMeshPatchMapper> bfMap(nPhysical);
+    PtrList<coupledMesh::subMeshPointMapper> bpMap(nPhysical);
 
-    forAll(bMap, patchI)
+    for (label patchI = 0; patchI < nPhysical; patchI++)
     {
+        // Fetch patch size from the mesh
+        const polyPatch& patch = boundary[patchI];
+
+        const label nFaces = patch.size();
+        const label nPoints = patch.nPoints();
+
         // Prepare patch mappers
-        patchAddressing[patchI].setSize(nTotalPatchFaces[patchI], 0);
+        patchFaceAddressing[patchI].setSize(nTotalPatchFaces[patchI], 0);
+        patchPointAddressing[patchI].setSize(nTotalPatchPoints[patchI], 0);
 
         // Set identity map for first nPatchFaces,
         // and map from patch-face[0] for the rest
-        for (label i = 0; i < oldPatchSizes_[patchI]; i++)
+        for (label i = 0; i < nFaces; i++)
         {
-            patchAddressing[patchI][i] = i;
+            patchFaceAddressing[patchI][i] = i;
+        }
+
+        // Set identity map for first nPatchPoints,
+        // and map from patch-point[0] for the rest
+        for (label i = 0; i < nPoints; i++)
+        {
+            patchPointAddressing[patchI][i] = i;
         }
 
         // Set the boundary mapper pointer
-        bMap.set
+        bfMap.set
         (
             patchI,
-            new coupledMesh::subMeshMapper
+            new coupledMesh::subMeshPatchMapper
             (
-                oldPatchSizes_[patchI],
-                patchAddressing[patchI]
+                nFaces,
+                patchFaceAddressing[patchI]
+            )
+        );
+
+        bpMap.set
+        (
+            patchI,
+            new coupledMesh::subMeshPointMapper
+            (
+                nPoints,
+                patchPointAddressing[patchI]
             )
         );
     }
 
-    // Loop through all volFields and re-size
-    // to accomodate additional cells / faces
-    coupledMesh::resizeMap(names[0], *this, vMap, irvMaps, bMap, brMaps, vsF);
-    coupledMesh::resizeMap(names[1], *this, vMap, irvMaps, bMap, brMaps, vvF);
-    coupledMesh::resizeMap(names[2], *this, vMap, irvMaps, bMap, brMaps, vsptF);
-    coupledMesh::resizeMap(names[3], *this, vMap, irvMaps, bMap, brMaps, vsytF);
-    coupledMesh::resizeMap(names[4], *this, vMap, irvMaps, bMap, brMaps, vtF);
+    // Loop through all fields and re-size
+    // to accomodate additional cells / faces / points
+    const objectRegistry& db = *this;
 
-    coupledMesh::resizeMap(names[5], *this, sMap, irsMaps, bMap, brMaps, ssF);
-    coupledMesh::resizeMap(names[6], *this, sMap, irsMaps, bMap, brMaps, svF);
-    coupledMesh::resizeMap(names[7], *this, sMap, irsMaps, bMap, brMaps, ssptF);
-    coupledMesh::resizeMap(names[8], *this, sMap, irsMaps, bMap, brMaps, ssytF);
-    coupledMesh::resizeMap(names[9], *this, sMap, irsMaps, bMap, brMaps, stF);
+    coupledMesh::resizeMap(names[0], db, vMap, irvMaps, bfMap, bfrMaps, vsF);
+    coupledMesh::resizeMap(names[1], db, vMap, irvMaps, bfMap, bfrMaps, vvF);
+    coupledMesh::resizeMap(names[2], db, vMap, irvMaps, bfMap, bfrMaps, vsptF);
+    coupledMesh::resizeMap(names[3], db, vMap, irvMaps, bfMap, bfrMaps, vsytF);
+    coupledMesh::resizeMap(names[4], db, vMap, irvMaps, bfMap, bfrMaps, vtF);
+
+    coupledMesh::resizeMap(names[5], db, sMap, irsMaps, bfMap, bfrMaps, ssF);
+    coupledMesh::resizeMap(names[6], db, sMap, irsMaps, bfMap, bfrMaps, svF);
+    coupledMesh::resizeMap(names[7], db, sMap, irsMaps, bfMap, bfrMaps, ssptF);
+    coupledMesh::resizeMap(names[8], db, sMap, irsMaps, bfMap, bfrMaps, ssytF);
+    coupledMesh::resizeMap(names[9], db, sMap, irsMaps, bfMap, bfrMaps, stF);
+
+    coupledMesh::resizeMap(names[10], db, pMap, irpMaps, bpMap, bprMaps, psF);
+    coupledMesh::resizeMap(names[11], db, pMap, irpMaps, bpMap, bprMaps, pvF);
+    coupledMesh::resizeMap(names[12], db, pMap, irpMaps, bpMap, bprMaps, psptF);
+    coupledMesh::resizeMap(names[13], db, pMap, irpMaps, bpMap, bprMaps, psytF);
+    coupledMesh::resizeMap(names[14], db, pMap, irpMaps, bpMap, bprMaps, ptF);
 }
 
 
