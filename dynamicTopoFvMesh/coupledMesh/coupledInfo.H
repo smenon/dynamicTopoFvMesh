@@ -242,7 +242,8 @@ public:
         ) const;
 
         // Resize map for individual field
-        template <class GeomField, class Mapper>
+        template
+        <class Type, template<class> class Patch, class Mesh, class Mapper>
         static void resizeMap
         (
             const label srcIndex,
@@ -250,8 +251,8 @@ public:
             const List<labelList>& internalReverseMaps,
             const PtrList<Mapper>& boundaryMapper,
             const List<labelListList>& boundaryReverseMaps,
-            const List<PtrList<GeomField> >& srcFields,
-            GeomField& field
+            const List<PtrList<GeometricField<Type, Patch, Mesh> > >& srcFields,
+            GeometricField<Type, Patch, Mesh>& field
         );
 
         // Resize map for all fields in registry

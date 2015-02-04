@@ -1159,9 +1159,38 @@ void coupledInfo<MeshType>::setField
 }
 
 
+// Temporarily resize empty patchFields
+template <class Type, template<class> class PatchField>
+struct EmptyResize
+{
+    void operator()(const labelList& addr, PatchField<Type>& field)
+    {}
+};
+
+
+// Partial template specialization for fvPatchFields
+template <class Type>
+struct EmptyResize<Type, fvPatchField>
+{
+    void operator()(const labelList& addr, fvPatchField<Type>& field)
+    {
+        const word& emptyType = emptyPolyPatch::typeName;
+
+        if (field.empty() && addr.size() && field.type() != emptyType)
+        {
+            // Artificially set the size prior to remap,
+            // since fvPatchField::autoMap appears to be
+            // assigning the field to patchInternalField
+            // (which is empty, since the patch is zero-sized)
+            field.setSize(1);
+        }
+    }
+};
+
+
 // Resize map for individual field
 template <class MeshType>
-template <class GeomField, class Mapper>
+template <class Type, template<class> class Patch, class Mesh, class Mapper>
 void coupledInfo<MeshType>::resizeMap
 (
     const label srcIndex,
@@ -1169,10 +1198,13 @@ void coupledInfo<MeshType>::resizeMap
     const List<labelList>& internalReverseMaps,
     const PtrList<Mapper>& boundaryMapper,
     const List<labelListList>& boundaryReverseMaps,
-    const List<PtrList<GeomField> >& srcFields,
-    GeomField& field
+    const List<PtrList<GeometricField<Type, Patch, Mesh> > >& srcFields,
+    GeometricField<Type, Patch, Mesh>& field
 )
 {
+    typedef GeometricField<Type, Patch, Mesh> GeomFieldType;
+    typedef typename GeomFieldType::PatchFieldType PatchFieldType;
+
     // autoMap the internal field
     field.internalField().autoMap(internalMapper);
 
@@ -1180,7 +1212,7 @@ void coupledInfo<MeshType>::resizeMap
     forAll(srcFields, pI)
     {
         // Fetch field for this processor
-        const GeomField& srcField = srcFields[pI][srcIndex];
+        const GeomFieldType& srcField = srcFields[pI][srcIndex];
 
         field.internalField().rmap
         (
@@ -1192,16 +1224,25 @@ void coupledInfo<MeshType>::resizeMap
     // Map physical boundary-fields
     forAll(boundaryMapper, patchI)
     {
+        PatchFieldType& patchField = field.boundaryField()[patchI];
+
+        // Optionally resize empty fields temporarily
+        EmptyResize<Type, Patch>()
+        (
+            boundaryMapper[patchI].directAddressing(),
+            patchField
+        );
+
         // autoMap the patchField
-        field.boundaryField()[patchI].autoMap(boundaryMapper[patchI]);
+        patchField.autoMap(boundaryMapper[patchI]);
 
         // Reverse map for additional patch faces
         forAll(srcFields, pI)
         {
             // Fetch field for this processor
-            const GeomField& srcField = srcFields[pI][srcIndex];
+            const GeomFieldType& srcField = srcFields[pI][srcIndex];
 
-            field.boundaryField()[patchI].rmap
+            patchField.rmap
             (
                 srcField.boundaryField()[patchI],
                 boundaryReverseMaps[pI][patchI]
