@@ -336,6 +336,8 @@ void topoMapper::setOffsets
     const labelList& cellStarts,
     const labelList& faceSizes,
     const labelList& faceStarts,
+    const labelList& pointSizes,
+    const labelList& pointStarts,
     const labelListList& patchSizes,
     const labelListList& patchStarts,
     const labelListList& pointPatchSizes,
@@ -346,6 +348,8 @@ void topoMapper::setOffsets
     cellStarts_ = cellStarts;
     faceSizes_ = faceSizes;
     faceStarts_ = faceStarts;
+    pointSizes_ = pointSizes;
+    pointStarts_ = pointStarts;
     patchSizes_ = patchSizes;
     patchStarts_ = patchStarts;
     pointPatchSizes_ = pointPatchSizes;
@@ -416,6 +420,13 @@ const labelList& topoMapper::faceSizes() const
 }
 
 
+//- Fetch point sizes
+const labelList& topoMapper::pointSizes() const
+{
+    return pointSizes_;
+}
+
+
 //- Fetch patch sizes
 const labelListList& topoMapper::patchSizes() const
 {
@@ -441,6 +452,13 @@ const labelList& topoMapper::cellStarts() const
 const labelList& topoMapper::faceStarts() const
 {
     return faceStarts_;
+}
+
+
+//- Fetch point starts
+const labelList& topoMapper::pointStarts() const
+{
+    return pointStarts_;
 }
 
 
@@ -781,6 +799,9 @@ void topoMapper::clear() const
 
     faceSizes_.clear();
     faceStarts_.clear();
+
+    pointSizes_.clear();
+    pointStarts_.clear();
 
     patchSizes_.clear();
     patchStarts_.clear();

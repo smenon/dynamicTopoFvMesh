@@ -4653,6 +4653,8 @@ void dynamicTopoFvMesh::handleCoupledPatches
             cellStarts,
             faceSizes,
             faceStarts,
+            pointSizes,
+            pointStarts,
             patchSizes,
             patchStarts,
             pointPatchSizes,

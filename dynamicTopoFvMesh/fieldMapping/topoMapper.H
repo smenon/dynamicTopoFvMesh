@@ -144,6 +144,8 @@ private:
         mutable labelList cellStarts_;
         mutable labelList faceSizes_;
         mutable labelList faceStarts_;
+        mutable labelList pointSizes_;
+        mutable labelList pointStarts_;
         mutable labelListList patchSizes_;
         mutable labelListList patchStarts_;
         mutable labelListList pointPatchSizes_;
@@ -266,6 +268,8 @@ public:
             const labelList& cellStarts,
             const labelList& faceSizes,
             const labelList& faceStarts,
+            const labelList& pointSizes,
+            const labelList& pointStarts,
             const labelListList& patchSizes,
             const labelListList& patchStarts,
             const labelListList& pointPatchSizes,
@@ -299,6 +303,9 @@ public:
         //- Fetch face sizes
         const labelList& faceSizes() const;
 
+        //- Fetch point sizes
+        const labelList& pointSizes() const;
+
         //- Fetch patch sizes
         const labelListList& patchSizes() const;
 
@@ -310,6 +317,9 @@ public:
 
         //- Fetch face starts
         const labelList& faceStarts() const;
+
+        //- Fetch point starts
+        const labelList& pointStarts() const;
 
         //- Fetch patch starts
         const labelListList& patchStarts() const;

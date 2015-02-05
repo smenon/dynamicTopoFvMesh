@@ -203,6 +203,18 @@ topoPointMapper::topoPointMapper
     weightsPtr_(NULL),
     insertedPointLabelsPtr_(NULL)
 {
+    // Fetch offset sizes from topoMapper
+    const labelList& sizes = tMapper_.pointSizes();
+
+    // Add offset sizes
+    if (sizes.size())
+    {
+        forAll(sizes, pI)
+        {
+            sizeBeforeMapping_ += sizes[pI];
+        }
+    }
+
     // Check for possibility of direct mapping
     if ((min(mpm_.pointMap()) > -1) && mpm_.pointsFromPointsMap().empty())
     {
