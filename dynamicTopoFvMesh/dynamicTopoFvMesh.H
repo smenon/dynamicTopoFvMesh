@@ -220,7 +220,7 @@ class dynamicTopoFvMesh
 
         // Information for field-mapping
         Map<mapPointPair> pointParents_;
-        List<mapPointPair> pointFactors_;
+        List<scalar> pointFactors_;
         List<scalarField> pointWeights_;
         List<vectorField> pointCentres_;
 
@@ -997,8 +997,7 @@ class dynamicTopoFvMesh
             labelList& parents,
             scalarField& weights,
             vectorField& centres,
-            bool output = false,
-            label pIndex = -1
+            bool output = false
         );
 
         // Fetch length-scale info for processor entities

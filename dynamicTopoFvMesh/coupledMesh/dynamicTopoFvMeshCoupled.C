@@ -10099,8 +10099,7 @@ void dynamicTopoFvMesh::computeCoupledWeights
     labelList& parents,
     scalarField& weights,
     vectorField& centres,
-    bool output,
-    label pIndex
+    bool output
 )
 {
     if (!Pstream::parRun())
@@ -10112,23 +10111,6 @@ void dynamicTopoFvMesh::computeCoupledWeights
     const labelList& cStarts = mapper_->cellStarts();
     const labelListList& pSizes = mapper_->patchSizes();
 
-    if (dimension == 0)
-    {
-        // Fetch the mapping pair for this point
-        const labelPair& pair = pointFactors_[pIndex].second();
-
-        const label pI = pair.first();
-        const label mapPoint = pair.second();
-
-        const coupledMesh& recvMesh = recvMeshes_[pI];
-        const dynamicTopoFvMesh& mesh = recvMesh.subMesh();
-
-        // Set mapping with offsets
-        parents.setSize(1, mapPoint);
-        weights.setSize(1, 1.0);
-        centres.setSize(1, mesh.oldPoints_[mapPoint]);
-    }
-    else
     if (dimension == 2)
     {
         label patchIndex = whichPatch(index);

@@ -59,6 +59,17 @@ void topoPointPatchMapper::calcInsertedAddressing() const
             << abort(FatalError);
     }
 
+    // Information from the old patch
+    const label oldPatchSize = sizeBeforeMapping();
+
+    if (oldPatchSize == 0)
+    {
+        // Nothing to map from. Return empty.
+        insertedPointLabelsPtr_ = new labelList(0);
+        insertedPointAddressingPtr_ = new labelListList(0);
+        return;
+    }
+
     // Allocate for inserted point labels and addressing
     label nInsertedPoints = 0;
 
