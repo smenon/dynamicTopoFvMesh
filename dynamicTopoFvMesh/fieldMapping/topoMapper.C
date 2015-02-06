@@ -329,6 +329,38 @@ void topoMapper::setOldPatchMeshPoints
 }
 
 
+//- Set sub mesh map points information
+void topoMapper::setSubMeshMapPointList
+(
+    const Xfer<MapPointList>& subMeshPoints
+) const
+{
+    subMeshMapPointList_.transfer(subMeshPoints());
+}
+
+
+//- Set sub mesh patch map information
+void topoMapper::setSubMeshPatchMaps
+(
+    const Xfer<labelMapLists>& subMeshPatchMaps
+) const
+{
+    subMeshPatchMaps_.transfer(subMeshPatchMaps());
+}
+
+
+//- Renumber map points after re-ordering
+void topoMapper::renumberMapPoints(const labelMap& map) const
+{
+    forAll(subMeshMapPointList_, mpI)
+    {
+        MapPoint& mp = subMeshMapPointList_[mpI];
+
+        mp.first() = map[mp.first()];
+    }
+}
+
+
 //- Set cell / patch offset information
 void topoMapper::setOffsets
 (
@@ -473,6 +505,20 @@ const labelListList& topoMapper::patchStarts() const
 const labelListList& topoMapper::pointPatchStarts() const
 {
     return pointPatchStarts_;
+}
+
+
+//- Fetch subMesh map point list
+const topoMapper::MapPointList& topoMapper::subMeshMapPointList() const
+{
+    return subMeshMapPointList_;
+}
+
+
+//- Fetch subMesh patch maps
+const topoMapper::labelMapLists& topoMapper::subMeshPatchMaps() const
+{
+    return subMeshPatchMaps_;
 }
 
 
@@ -811,6 +857,10 @@ void topoMapper::clear() const
 
     // Clear old patch mesh points
     oldPatchMeshPoints_.clear();
+
+    // Clear sub mesh information
+    subMeshMapPointList_.clear();
+    subMeshPatchMaps_.clear();
 }
 
 

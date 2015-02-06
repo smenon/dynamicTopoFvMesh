@@ -73,8 +73,16 @@ public:
 
     // Public typedefs
 
+        typedef Map<label> labelMap;
+        typedef const labelMap* labelMapPtr;
+        typedef List<labelMapPtr> labelMapList;
+        typedef List<labelMapList> labelMapLists;
+
         typedef List<scalarField> scalarFieldList;
         typedef List<vectorField> vectorFieldList;
+
+        typedef Tuple2<label, labelPair> MapPoint;
+        typedef List<MapPoint> MapPointList;
 
 private:
 
@@ -153,6 +161,12 @@ private:
 
         //- Old patch mesh points
         mutable labelListList oldPatchMeshPoints_;
+
+        //- Sub mesh map points
+        mutable MapPointList subMeshMapPointList_;
+
+        //- Sub mesh patch maps
+        mutable labelMapLists subMeshPatchMaps_;
 
     // Private Member Functions
 
@@ -261,6 +275,21 @@ public:
             const Xfer<labelListList>& patchMeshPoints
         ) const;
 
+        //- Set sub mesh map points information
+        void setSubMeshMapPointList
+        (
+            const Xfer<MapPointList>& subMeshPoints
+        ) const;
+
+        //- Set sub mesh patch map information
+        void setSubMeshPatchMaps
+        (
+            const Xfer<labelMapLists>& subMeshPatchMaps
+        ) const;
+
+        //- Renumber map points after re-ordering
+        void renumberMapPoints(const labelMap& map) const;
+
         //- Set cell / patch offset information
         void setOffsets
         (
@@ -326,6 +355,12 @@ public:
 
         //- Fetch point patch starts
         const labelListList& pointPatchStarts() const;
+
+        //- Fetch subMesh map point list
+        const MapPointList& subMeshMapPointList() const;
+
+        //- Fetch subMesh patch maps
+        const labelMapLists& subMeshPatchMaps() const;
 
         // Store old-time information for all registered fields
         void storeOldTimes() const;

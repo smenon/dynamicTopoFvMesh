@@ -89,16 +89,17 @@ void topoCellMapper::calcAddressing() const
         forAll(cfc, cfcI)
         {
             // Get addressing
-            const labelList& mo = cfc[cfcI].masterObjects();
+            const objectMap& obj = cfc[cfcI];
 
-            label cellI = cfc[cfcI].index();
+            const label cellI = obj.index();
+            const labelList& mo = obj.masterObjects();
 
             if (addr[cellI].size() > 0)
             {
                 FatalErrorIn("void topoCellMapper::calcAddressing() const")
                     << "Master cell " << cellI
                     << " mapped from cells " << mo
-                    << " is already destination for mapping."
+                    << " is already mapping from: " << addr[cellI]
                     << abort(FatalError);
             }
 

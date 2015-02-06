@@ -570,6 +570,8 @@ void dynamicTopoFvMesh::threadedMapping
     pointFactors_.setSize(nPointsFromPoints);
     pointsFromPoints_.setSize(nPointsFromPoints);
 
+    topoMapper::MapPointList subMeshPoints(nPointsFromSubMeshes);
+
     // Populate pointsFromPoints
     nPointsFromPoints = 0;
     nPointsFromSubMeshes = 0;
@@ -583,6 +585,12 @@ void dynamicTopoFvMesh::threadedMapping
             pointFactors_[nPointsFromPoints] = pair.first();
             pointsFromPoints_[nPointsFromPoints].index() = pIter.key();
             nPointsFromPoints++;
+        }
+        else
+        {
+            topoMapper::MapPoint pMap(pIter.key(), pair.second());
+
+            subMeshPoints[nPointsFromSubMeshes++] = pMap;
         }
     }
 
@@ -613,6 +621,9 @@ void dynamicTopoFvMesh::threadedMapping
     faceCentres_.setSize(nFacesFromFaces, vectorField(0));
     cellWeights_.setSize(nCellsFromCells, scalarField(0));
     cellCentres_.setSize(nCellsFromCells, vectorField(0));
+
+    // Set subMesh point mapping
+    mapper_->setSubMeshMapPointList(xferMove(subMeshPoints));
 
     // Convex-set algorithm for points
     pointSetAlgorithm pointAlgorithm

@@ -77,16 +77,14 @@ void topoPointMapper::calcAddressing() const
         forAll(pfp, pfpI)
         {
             // Get addressing
-            const labelList& mo = pfp[pfpI].masterObjects();
+            const objectMap& obj = pfp[pfpI];
 
-            label pointI = pfp[pfpI].index();
+            const label pointI = obj.index();
+            const labelList& mo = obj.masterObjects();
 
             if (addr[pointI].size() > 0)
             {
-                FatalErrorIn
-                (
-                    "void topoPointMapper::calcAddressing() const"
-                )
+                FatalErrorIn("void topoPointMapper::calcAddressing() const")
                     << "Master point " << pointI
                     << " mapped from points " << mo
                     << " is already mapping from: " << addr[pointI]
@@ -95,6 +93,36 @@ void topoPointMapper::calcAddressing() const
 
             // Set master objects
             addr[pointI] = mo;
+        }
+
+        // Fetch offset starts from topoMapper
+        const labelList& starts = tMapper_.pointStarts();
+
+        // Loop through subMesh map point lists
+        const topoMapper::MapPointList& mpList = tMapper_.subMeshMapPointList();
+
+        forAll(mpList, mpI)
+        {
+            const topoMapper::MapPoint& mp = mpList[mpI];
+
+            const label pointI = mp.first();
+            const labelPair& pair = mp.second();
+
+            if (addr[pointI].size() > 0)
+            {
+                FatalErrorIn("void topoPointMapper::calcAddressing() const")
+                    << "Master point " << pointI
+                    << " mapped from subMesh " << pair
+                    << " is already mapping from: " << addr[pointI]
+                    << abort(FatalError);
+            }
+
+            const label pI = pair.first();
+            const label mapPoint = pair.second();
+            const label mapIndex = (starts[pI] + mapPoint);
+
+            // Assign addressing with offset
+            addr[pointI] = labelList(1, mapIndex);
         }
 
         // Do mapped points.

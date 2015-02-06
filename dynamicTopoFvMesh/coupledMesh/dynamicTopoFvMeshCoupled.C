@@ -4585,6 +4585,9 @@ void dynamicTopoFvMesh::handleCoupledPatches
         labelListList pointPatchSizes(nProcs, labelList(nPhysical, 0));
         labelListList pointPatchStarts(nProcs, labelList(nPhysical, 0));
 
+        // Allocate subMesh patch point maps
+        topoMapper::labelMapLists subMeshPointMaps(nProcs);
+
         label nTotalCells = nOldCells_;
         label nTotalPoints = nOldPoints_;
         label nTotalIntFaces = nOldInternalFaces_;
@@ -4644,6 +4647,19 @@ void dynamicTopoFvMesh::handleCoupledPatches
                 nTotalPatchFaces[patchI] += nFaces;
                 nTotalPatchPoints[patchI] += nPoints;
             }
+
+            // Allocate and assign patch point maps for this subMesh
+            topoMapper::labelMapList& procPatchMap = subMeshPointMaps[pI];
+
+            procPatchMap.setSize(sMeshBoundary.size());
+
+            forAll(procPatchMap, patchI)
+            {
+                const polyPatch& patch = sMeshBoundary[patchI];
+                const Map<label>& pmpm = patch.meshPointMap();
+
+                procPatchMap[patchI] = &pmpm;
+            }
         }
 
         // Set sizes / starts in mapper
@@ -4660,6 +4676,9 @@ void dynamicTopoFvMesh::handleCoupledPatches
             pointPatchSizes,
             pointPatchStarts
         );
+
+        // Set subMesh patch maps
+        mapper_->setSubMeshPatchMaps(xferMove(subMeshPointMaps));
 
         if (debug > 3)
         {
