@@ -164,6 +164,68 @@ void topoPointPatchMapper::calcInsertedAddressing() const
         nInsertedPoints++;
     }
 
+    // Local typedefs
+    typedef topoMapper::MapPoint MapPoint;
+    typedef topoMapper::labelMap labelMap;
+    typedef topoMapper::MapPointList MapPointList;
+    typedef topoMapper::labelMapList labelMapList;
+    typedef topoMapper::labelMapLists labelMapLists;
+
+    // Fetch patch starts / maps from topoMapper
+    const labelMapLists& procPatchMaps = tMapper_.subMeshPatchMaps();
+    const labelListList& procPatchStarts = tMapper_.pointPatchStarts();
+
+    // Loop through subMesh map point lists
+    const MapPointList& mpList = tMapper_.subMeshMapPointList();
+
+    forAll(mpList, mpI)
+    {
+        const MapPoint& mp = mpList[mpI];
+
+        const label pIndex = mp.first();
+        const labelPair& pair = mp.second();
+
+        // Check if the index belongs to this patch
+        pnIter = newMeshPointMap.find(pIndex);
+
+        if (pnIter == newMeshPointMap.end())
+        {
+            continue;
+        }
+
+        // Make an entry for the inserted label,
+        // and renumber addressing to patch.
+        insertedPoints[nInsertedPoints] = pnIter();
+
+        // Make an entry for addressing
+        labelList& addr = insertedAddressing[nInsertedPoints];
+
+        const label pI = pair.first();
+
+        // Find location of point on subMesh patch
+        const labelMapList& patchMaps = procPatchMaps[pI];
+        const labelList& patchStarts = procPatchStarts[pI];
+        const labelMap& patchMap = *(patchMaps[patch_.index()]);
+
+        if (patch_.index() >= patchStarts.size())
+        {
+            Pout<< " Attempting to map from a non-physical patch: "
+                << patch_.name()
+                << endl;
+            continue;
+        }
+
+        // Compute offset into patch
+        const label mapPoint = pair.second();
+        const label localPoint = patchMap[mapPoint];
+        const label mapIndex = (patchStarts[patch_.index()] + localPoint);
+
+        // Assign addressing with offset
+        addr = labelList(1, mapIndex);
+
+        nInsertedPoints++;
+    }
+
     // Shorten inserted points to actual size
     insertedPoints.setSize(nInsertedPoints);
     insertedAddressing.setSize(nInsertedPoints);
