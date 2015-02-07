@@ -209,9 +209,6 @@ void topoPointPatchMapper::calcInsertedAddressing() const
 
         if (patch_.index() >= patchStarts.size())
         {
-            Pout<< " Attempting to map from a non-physical patch: "
-                << patch_.name()
-                << endl;
             continue;
         }
 

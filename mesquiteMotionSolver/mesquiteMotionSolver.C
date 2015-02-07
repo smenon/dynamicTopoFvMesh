@@ -4186,6 +4186,13 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         forAll(boundary, patchI)
         {
             const polyPatch& patch = boundary[patchI];
+
+            // Skip processor patches
+            if (isA<processorPolyPatch>(patch))
+            {
+                continue;
+            }
+
             const labelList& mPoints = patch.meshPoints();
 
             forAll(mPoints, pointI)
