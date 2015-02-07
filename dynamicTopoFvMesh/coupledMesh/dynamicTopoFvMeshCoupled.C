@@ -2348,12 +2348,15 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
     }
 
     // Insert all points, with merging if necessary
+    const coupleMap::entityType pzEnum = coupleMap::POINT_ZONE;
+
     forAll(pointsToInsert, pI)
     {
         Map<label>& procPointMapI = pointsToInsert[pI];
 
         // Fetch reference to subMesh
         const coupleMap& cMapI = recvMeshes_[pI].map();
+        const labelList& piZ = cMapI.entityBuffer(pzEnum);
         const dynamicTopoFvMesh& meshI = recvMeshes_[pI].subMesh();
 
         forAllIter(Map<label>, procPointMapI, pItI)
@@ -2378,6 +2381,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                 // Fetch reference to subMesh
                 const coupleMap& cMapJ = recvMeshes_[pJ].map();
+                const labelList& pjZ = cMapJ.entityBuffer(pzEnum);
                 const dynamicTopoFvMesh& meshJ = recvMeshes_[pJ].subMesh();
 
                 // Compare points with this processor
@@ -2399,7 +2403,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                                 (
                                     pointJ,
                                     meshJ.oldPoints_[pItJ.key()],
-                                    pair
+                                    pair,
+                                    pjZ[pItJ.key()]
                                 )
                             );
 
@@ -2496,7 +2501,8 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 (
                     pointI,
                     meshI.oldPoints_[pItI.key()],
-                    pair
+                    pair,
+                    piZ[pItI.key()]
                 )
             );
 
@@ -6632,6 +6638,31 @@ void dynamicTopoFvMesh::buildProcessorPatchMesh
 
     // Fill the default patch as 'internal'
     ptBuffer[boundary.size()] = -1;
+
+    // Fill in point zone information
+    labelList& pzBuffer = cMap.entityBuffer(coupleMap::POINT_ZONE);
+
+    const pointZoneMesh& pointZones = polyMesh::pointZones();
+
+    forAll(pointZones, pzI)
+    {
+        // Get the list of zone points
+        const pointZone& zonePoints = pointZones[pzI];
+
+        forAll(zonePoints, pointI)
+        {
+            const label pIndex = zonePoints[pointI];
+
+            Map<label>::const_iterator pIter = rPointMap.find(pIndex);
+
+            if (pIter == rPointMap.end())
+            {
+                continue;
+            }
+
+            pzBuffer[pIter()] = zonePoints.index();
+        }
+    }
 
     // Make a temporary dictionary for patch construction
     dictionary patchDict;

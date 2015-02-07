@@ -385,6 +385,9 @@ void coupleMap::allocateBuffers() const
     entityBuffer(EDGE_SIZES).setSize(nEntities(NBDY));
     entityBuffer(PATCH_ID).setSize(nEntities(NBDY));
 
+    // Size up point zone buffers
+    entityBuffer(POINT_ZONE).setSize(nEntities(POINT), -1);
+
     // Set face-sizes
     entityBuffer(NFE_BUFFER).setSize(nEntities(FACE));
 

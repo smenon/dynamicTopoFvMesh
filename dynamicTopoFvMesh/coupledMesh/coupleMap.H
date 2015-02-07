@@ -97,7 +97,8 @@ public:
             EDGE_STARTS   = 9,
             EDGE_SIZES    = 10,
             PATCH_ID      = 11,
-            MAX_BUFFERS   = 12
+            POINT_ZONE    = 12,
+            MAX_BUFFERS   = 13
         };
 
         //- Enumerants for operations
