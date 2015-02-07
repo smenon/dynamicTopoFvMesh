@@ -3872,15 +3872,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                     continue;
                 }
 
-                if (is2D())
+                if (cFace.size() == 3)
                 {
-                    if (face::compare(cFace, sFace))
-                    {
-                        sfIndex = sfI;
-                    }
-                }
-                else
-                {
+                    // Optimized triangular face comparison
                     if
                     (
                         triFace::compare
@@ -3889,6 +3883,14 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                             triFace(sFace[0], sFace[1], sFace[2])
                         )
                     )
+                    {
+                        sfIndex = sfI;
+                    }
+                }
+                else
+                {
+                    // Regular face compare
+                    if (face::compare(cFace, sFace))
                     {
                         sfIndex = sfI;
                     }
