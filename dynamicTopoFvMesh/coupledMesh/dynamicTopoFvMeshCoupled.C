@@ -9877,6 +9877,12 @@ bool dynamicTopoFvMesh::coupledFillTables
                 // This face is either internal or on a physical boundary
                 const face& slaveFace = mesh.faces_[seFaces[faceI]];
 
+                // Ensure that slave edge is surrounded by triangles
+                if (slaveFace.size() != 3)
+                {
+                    return false;
+                }
+
                 // Find the isolated point
                 meshOps::findIsolatedPoint
                 (
