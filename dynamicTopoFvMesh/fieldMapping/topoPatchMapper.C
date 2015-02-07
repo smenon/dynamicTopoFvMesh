@@ -62,13 +62,13 @@ void topoPatchMapper::clearOut()
 
 
 //- Calculate the insertedFaceLabels list
-void topoPatchMapper::calcInsertedFaceAddressing() const
+void topoPatchMapper::calcInsertedAddressing() const
 {
     if (insertedFaceLabelsPtr_ || insertedFaceAddressingPtr_)
     {
         FatalErrorIn
         (
-            "void topoPatchMapper::calcInsertedFaceAddressing() const"
+            "void topoPatchMapper::calcInsertedAddressing() const"
         )   << " Inserted labels has already been calculated."
             << abort(FatalError);
     }
@@ -132,8 +132,7 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
 
                 FatalErrorIn
                 (
-                    "void topoPatchMapper::"
-                    "calcInsertedFaceAddressing() const"
+                    "void topoPatchMapper::calcInsertedAddressing() const"
                 )   << " Mapping for inserted boundary face is incorrect."
                     << " Found an empty masterObjects list."
                     << nl << " Face: " << fffI.index()
@@ -174,10 +173,8 @@ void topoPatchMapper::calcInsertedFaceAddressing() const
 
                         FatalErrorIn
                         (
-                            "void topoPatchMapper::"
-                            "calcInsertedFaceAddressing() const"
-                        )
-                            << "Addressing into another patch is not allowed."
+                            "void topoPatchMapper::calcInsertedAddressing()"
+                        )   << "Addressing into another patch is not allowed."
                             << nl << " Patch face index: " << faceI
                             << nl << " Patch: " << patch_.name()
                             << nl << " fffI.index: " << fffI.index()
@@ -790,7 +787,7 @@ const labelList& topoPatchMapper::insertedObjectLabels() const
 {
     if (!insertedFaceLabelsPtr_)
     {
-        calcInsertedFaceAddressing();
+        calcInsertedAddressing();
     }
 
     return *insertedFaceLabelsPtr_;
@@ -802,7 +799,7 @@ const labelList& topoPatchMapper::insertedObjectMap() const
 {
     if (!insertedFaceIndexMapPtr_)
     {
-        calcInsertedFaceAddressing();
+        calcInsertedAddressing();
     }
 
     return *insertedFaceIndexMapPtr_;
@@ -814,7 +811,7 @@ const labelListList& topoPatchMapper::insertedFaceAddressing() const
 {
     if (!insertedFaceAddressingPtr_)
     {
-        calcInsertedFaceAddressing();
+        calcInsertedAddressing();
     }
 
     return *insertedFaceAddressingPtr_;

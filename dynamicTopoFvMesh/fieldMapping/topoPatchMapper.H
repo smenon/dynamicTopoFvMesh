@@ -115,7 +115,7 @@ class topoPatchMapper
         void operator=(const topoPatchMapper&);
 
         //- Calculate the insertedFace addressing list
-        void calcInsertedFaceAddressing() const;
+        void calcInsertedAddressing() const;
 
         //- Calculate addressing for mapping
         void calcAddressing() const;

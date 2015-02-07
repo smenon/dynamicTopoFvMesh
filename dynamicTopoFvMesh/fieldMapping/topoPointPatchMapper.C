@@ -126,6 +126,8 @@ void topoPointPatchMapper::calcInsertedAddressing() const
 
         addr.setSize(mo.size());
 
+        label nPatchMasterPoints = 0;
+
         forAll(mo, indexI)
         {
             const label oldIndex = mo[indexI];
@@ -135,30 +137,39 @@ void topoPointPatchMapper::calcInsertedAddressing() const
 
             if (poIter == oldMeshPointMap.end())
             {
-                // Write out for post-processing
-                meshOps::writeVTK
-                (
-                    mpm_.mesh(),
-                    "patchPointPatchError_"
-                  + Foam::name(pObj.index()),
-                    labelList(1, pObj.index()),
-                    0, mpm_.mesh().points()
-                );
-
-                FatalErrorIn
-                (
-                    "void topoPointPatchMapper::calcInsertedAddressing() const"
-                )   << " Mapping for inserted boundary point is incorrect."
-                    << " Found an master point that doesn't belong to the patch"
-                    << nl << " Point: " << pIndex
-                    << nl << " Master: " << oldIndex
-                    << nl << " MasterObjects: " << mo
-                    << nl << " Patch: " << patch_.name()
-                    << abort(FatalError);
+                continue;
             }
 
             // Add renumbered entity
-            addr[indexI] = poIter();
+            addr[nPatchMasterPoints++] = poIter();
+        }
+
+        // Shorten to actual size
+        if (nPatchMasterPoints)
+        {
+            addr.setSize(nPatchMasterPoints);
+        }
+        else
+        {
+            // Write out for post-processing
+            meshOps::writeVTK
+            (
+                mpm_.mesh(),
+                "patchPointPatchError_"
+              + Foam::name(pIndex),
+                labelList(1, pIndex),
+                0, mpm_.mesh().points()
+            );
+
+            FatalErrorIn
+            (
+                "void topoPointPatchMapper::calcInsertedAddressing() const"
+            )   << " Mapping for inserted boundary point is incorrect."
+                << " Found no master points that belong to the patch."
+                << nl << " Point: " << pIndex
+                << nl << " MasterObjects: " << mo
+                << nl << " Patch: " << patch_.name()
+                << abort(FatalError);
         }
 
         nInsertedPoints++;
