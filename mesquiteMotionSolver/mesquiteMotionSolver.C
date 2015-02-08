@@ -4565,59 +4565,58 @@ void mesquiteMotionSolver::smoothSurfaces()
     // Transform and update any cyclics
     forAll(boundary, patchI)
     {
-        if (!isA<cyclicPolyPatch>(boundary[patchI]))
+        const polyPatch& patch = boundary[patchI];
+
+        if (!isA<cyclicPolyPatch>(patch))
         {
             continue;
         }
 
         // Cast to cyclic
-        const cyclicPolyPatch& cyclicPatch =
-        (
-            refCast<const cyclicPolyPatch>(boundary[patchI])
-        );
+        const cyclicPolyPatch& half0 = refCast<const cyclicPolyPatch>(patch);
 
-        bool translate =
-        (
-            cyclicPatch.transform()
-         == cyclicPolyPatch::TRANSLATIONAL
-        );
-
-        label patchStart = boundary[patchI].start();
-        label halfSize = (boundary[patchI].size() / 2);
-
-        for (label faceI = 0; faceI < halfSize; faceI++)
+        // Skip the neighbor patch of the cyclic
+        if (half0.neighbour())
         {
-            label half0Index = (patchStart + faceI);
-            label half1Index = (patchStart + halfSize + faceI);
+            continue;
+        }
 
-            const face& half0Face = mesh().faces()[half0Index];
-            const face& half1Face = mesh().faces()[half1Index];
+        // Fetch the other half
+        const cyclicPolyPatch& half1 = half0.neighbPatch();
+
+        bool rotate = (half0.transform() == cyclicPolyPatch::ROTATIONAL);
+        bool translate = (half0.transform() == cyclicPolyPatch::TRANSLATIONAL);
+
+        const label half0Start = half0.start();
+        const label half1Start = half1.start();
+        const faceList& meshFaces = mesh().faces();
+
+        forAll(half0, faceI)
+        {
+            const label half0Index = (half0Start + faceI);
+            const label half1Index = (half1Start + faceI);
+            const face& half0Face = meshFaces[half0Index];
+            const face& half1Face = meshFaces[half1Index];
 
             label fS = half0Face.size();
 
             forAll(half0Face, pointI)
             {
-                label masterIndex = half0Face[pointI];
-                label slaveIndex = half1Face[(fS - pointI) % fS];
+                const label p0Index = half0Face[pointI];
+                const label p1Index = half1Face[(fS - pointI) % fS];
 
                 if (translate)
                 {
-                    refPoints_[slaveIndex] =
-                    (
-                        refPoints_[masterIndex]
-                      + cyclicPatch.separationVector()
-                    );
+                    const vector& sepVector = half0.separationVector();
+
+                    refPoints_[p1Index] = (refPoints_[p0Index] + sepVector);
                 }
                 else
+                if (rotate)
                 {
-                    // Copy and transform
-                    refPoints_[slaveIndex] = refPoints_[masterIndex];
+                    refPoints_[p1Index] = refPoints_[p0Index];
 
-                    cyclicPatch.transformPosition
-                    (
-                        refPoints_[slaveIndex],
-                        faceI
-                    );
+                    half0.transformPosition(refPoints_[p1Index], faceI);
                 }
             }
         }
