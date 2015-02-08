@@ -1178,7 +1178,18 @@ void dynamicTopoFvMesh::readCoupledPatches()
     // Loop through boundaries and add any cyclic patches
     forAll(boundary, patchI)
     {
-        if (!isA<cyclicPolyPatch>(boundary[patchI]))
+        const polyPatch& patch = boundary[patchI];
+
+        if (!isA<cyclicPolyPatch>(patch))
+        {
+            continue;
+        }
+
+        // Cast to cyclic
+        const cyclicPolyPatch& half0 = refCast<const cyclicPolyPatch>(patch);
+
+        // Skip the neighbor patch of the cyclic
+        if (half0.neighbour())
         {
             continue;
         }
@@ -1189,12 +1200,19 @@ void dynamicTopoFvMesh::readCoupledPatches()
             patchCoupling_.setSize(boundary.size());
         }
 
+        // Fetch the other half
+        const cyclicPolyPatch& half1 = half0.neighbPatch();
+
         if (debug)
         {
             Info<< " Adding cyclic: " << patchI
-                << " : " << boundary[patchI].name()
+                << " Half[0] : " << half0.name()
+                << " Half[1] : " << half1.name()
                 << endl;
         }
+
+        const label half0Index = half0.index();
+        const label half1Index = half1.index();
 
         // Configure with regIOobject for check-in
         coupleMap cMap
@@ -1202,9 +1220,9 @@ void dynamicTopoFvMesh::readCoupledPatches()
             IOobject
             (
                 "coupleMap_"
-              + Foam::name(patchI)
+              + Foam::name(half0Index)
               + "_To_"
-              + Foam::name(patchI)
+              + Foam::name(half1Index)
               + "_Local",
                 time().timeName(),
                 *this,
@@ -1216,8 +1234,8 @@ void dynamicTopoFvMesh::readCoupledPatches()
             true,
             false,
             patchI,
-            patchI,
-            patchI
+            half0Index,
+            half1Index
         );
 
         // Set the pointer
@@ -5624,203 +5642,194 @@ bool dynamicTopoFvMesh::checkCoupledBoundaries(bool report) const
 
         if (isA<cyclicPolyPatch>(boundary[pI]))
         {
-            const cyclicPolyPatch& cp =
-            (
-                refCast<const cyclicPolyPatch>(boundary[pI])
-            );
+            const polyPatch& bp = boundary[pI];
+            const cyclicPolyPatch& half0 = refCast<const cyclicPolyPatch>(bp);
 
-            if (cp.size() & 1)
+            if (half0.neighbour())
             {
-                sizeError = true;
-
-                Pout<< " Incorrect size for cyclic patch: "
-                    << cp.size() << endl;
+                continue;
             }
 
-            if (!sizeError)
+            // Fetch the other half
+            const cyclicPolyPatch& half1 = half0.neighbPatch();
+
+            if (half0.size() != half1.size())
             {
-                // Compute halfSize
-                label halfSize = cp.size() / 2;
+                sizeError = true;
+                continue;
+            }
 
-                vectorField half0Areas
-                (
-                    SubField<vector>
-                    (
-                        cp.faceAreas(),
-                        halfSize
-                    )
-                );
+            const vectorField& half0Areas = half0.faceAreas();
+            const vectorField& half1Areas = half1.faceAreas();
 
-                vectorField half0Centres
-                (
-                    SubField<vector>
-                    (
-                        cp.faceCentres(),
-                        halfSize
-                    )
-                );
+            vectorField half0Centres = half0.faceCentres();
+            vectorField half1Centres = half1.faceCentres();
 
-                vectorField half1Areas
-                (
-                    SubField<vector>
-                    (
-                        cp.faceAreas(),
-                        halfSize,
-                        halfSize
-                    )
-                );
+            const faceList& l0F = half0.localFaces();
+            const pointField& l0P = half0.localPoints();
+            const vectorField& l0C = half0.faceCentres();
 
-                vectorField half1Centres
-                (
-                    SubField<vector>
-                    (
-                        cp.faceCentres(),
-                        halfSize,
-                        halfSize
-                    )
-                );
+            const faceList& l1F = half1.localFaces();
+            const pointField& l1P = half1.localPoints();
 
-                const faceList& lF = boundary[pI].localFaces();
-                const pointField& lP = boundary[pI].localPoints();
-                const vectorField& lC = boundary[pI].faceCentres();
+            // Prepare anchor points
+            mAnchors[half0.index()].setSize(half0.size());
+            mAnchors[half1.index()].setSize(half1.size());
 
-                // Prepare anchor points
-                mAnchors[pI].setSize(boundary[pI].size());
+            forAll(l0F, faceI)
+            {
+                const face& l0Face = l0F[faceI];
+                const face& l1Face = l1F[faceI];
+                const label l0Point = l0Face[0];
+                const label l1Point = l1Face[0];
 
-                forAll(lF, faceI)
-                {
-                    mAnchors[pI][faceI] = lP[lF[faceI][0]];
-                }
+                mAnchors[half0.index()][faceI] = l0P[l0Point];
+                mAnchors[half1.index()][faceI] = l1P[l1Point];
+            }
 
-                // Transform first-half points and check
-                if (cp.transform() == cyclicPolyPatch::ROTATIONAL)
-                {
-                    forAll(half0Centres, faceI)
-                    {
-                        half0Centres[faceI] =
-                        (
-                            Foam::transform
-                            (
-                                cp.forwardT()[0],
-                                half0Centres[faceI]
-                            )
-                        );
-
-                        mAnchors[pI][faceI] =
-                        (
-                            Foam::transform
-                            (
-                                cp.forwardT()[0],
-                                mAnchors[pI][faceI]
-                            )
-                        );
-                    }
-                }
-                else
-                if (cp.transform() == cyclicPolyPatch::TRANSLATIONAL)
-                {
-                    forAll(half0Centres, faceI)
-                    {
-                        half0Centres[faceI] += cp.separationVector();
-                        mAnchors[pI][faceI] += cp.separationVector();
-                    }
-                }
-                else
-                {
-                    Pout<< " Cyclic check: Unknown transform."
-                        << abort(FatalError);
-                }
-
-                // Calculate a point-match tolerance per patch
-                scalar pTol = -GREAT;
-
-                // Check areas / compute tolerance
-                forAll(half0Areas, faceI)
-                {
-                    scalar fMagSf = mag(half0Areas[faceI]);
-                    scalar rMagSf = mag(half1Areas[faceI]);
-                    scalar avSf = 0.5 * (fMagSf + rMagSf);
-
-                    if (mag(fMagSf - rMagSf)/avSf > geomMatchTol_)
-                    {
-                        misMatchError = true;
-
-                        Pout<< " Face: " << faceI
-                            << " area does not match neighbour by: "
-                            << 100 * mag(fMagSf - rMagSf)/avSf
-                            << "% - possible patch ordering problem. "
-                            << " Front area:" << fMagSf
-                            << " Rear area: " << rMagSf
-                            << endl;
-                    }
-
-                    pTol =
-                    (
-                        Foam::max
-                        (
-                            pTol,
-                            geomMatchTol_ * mag(lP[lF[faceI][0]] - lC[faceI])
-                        )
-                    );
-                }
-
-                // Check centres / anchor points
+            // Transform first-half points and check
+            if (half0.transform() == cyclicPolyPatch::ROTATIONAL)
+            {
                 forAll(half0Centres, faceI)
                 {
-                    scalar distA =
+                    half0Centres[faceI] =
                     (
-                        mag
+                        Foam::transform
                         (
-                            mAnchors[pI][faceI]
-                          - mAnchors[pI][faceI + halfSize]
-                        )
-                    );
-
-                    scalar distC =
-                    (
-                        mag
-                        (
+                            half0.forwardT()[0],
                             half0Centres[faceI]
-                          - half1Centres[faceI]
                         )
                     );
 
-                    if (distA > pTol || distC > pTol)
-                    {
-                        misMatchError = true;
-
-                        UIndirectList<point> f1(lP, lF[faceI]);
-                        UIndirectList<point> f2(lP, lF[faceI + halfSize]);
-
-                        Pout<< " Face: " << faceI << nl
-                            << " Points: " << nl << f1 << nl << f2 << nl
-                            << " Anchors ::" << nl
-                            << mAnchors[pI][faceI] << nl
-                            << mAnchors[pI][faceI + halfSize] << nl
-                            << " Centres ::" << nl
-                            << half0Centres[faceI] << nl
-                            << half1Centres[faceI] << nl
-                            << " Tolerance: " << pTol << nl
-                            << " Measured Anchor distance: " << distA << nl
-                            << " Measured Centre distance: " << distC << nl
-                            << endl;
-                    }
-                }
-
-                if (misMatchError)
-                {
-                    // Write out to disk
-                    meshOps::writeVTK
+                    mAnchors[pI][faceI] =
                     (
-                        (*this),
-                        cp.name(),
-                        identity(cp.size()),
-                        2,
-                        cp.localPoints(),
-                        List<edge>(0),
-                        cp.localFaces()
+                        Foam::transform
+                        (
+                            half0.forwardT()[0],
+                            mAnchors[pI][faceI]
+                        )
                     );
                 }
+            }
+            else
+            if (half0.transform() == cyclicPolyPatch::TRANSLATIONAL)
+            {
+                forAll(half0Centres, faceI)
+                {
+                    half0Centres[faceI] += half0.separationVector();
+                    mAnchors[pI][faceI] += half0.separationVector();
+                }
+            }
+            else
+            {
+                Pout<< " Cyclic check: Unknown transform."
+                    << abort(FatalError);
+            }
+
+            // Calculate a point-match tolerance per patch
+            scalar pTol = -GREAT;
+
+            // Check areas / compute tolerance
+            forAll(half0Areas, faceI)
+            {
+                const face& l0Face = l0F[faceI];
+                const label l0Point = l0Face[0];
+
+                scalar fMagSf = mag(half0Areas[faceI]);
+                scalar rMagSf = mag(half1Areas[faceI]);
+                scalar avSf = 0.5 * (fMagSf + rMagSf);
+
+                if (mag(fMagSf - rMagSf)/avSf > geomMatchTol_)
+                {
+                    misMatchError = true;
+
+                    Pout<< " Face: " << faceI
+                        << " area does not match neighbour by: "
+                        << 100 * mag(fMagSf - rMagSf)/avSf
+                        << "% - possible patch ordering problem. "
+                        << " Front area:" << fMagSf
+                        << " Rear area: " << rMagSf
+                        << endl;
+                }
+
+                pTol =
+                (
+                    Foam::max
+                    (
+                        pTol,
+                        geomMatchTol_ * mag(l0P[l0Point] - l0C[faceI])
+                    )
+                );
+            }
+
+            // Check centres / anchor points
+            forAll(half0Centres, faceI)
+            {
+                scalar distA =
+                (
+                    mag
+                    (
+                        mAnchors[half0.index()][faceI]
+                      - mAnchors[half1.index()][faceI]
+                    )
+                );
+
+                scalar distC =
+                (
+                    mag
+                    (
+                        half0Centres[faceI]
+                      - half1Centres[faceI]
+                    )
+                );
+
+                if (distA > pTol || distC > pTol)
+                {
+                    misMatchError = true;
+
+                    UIndirectList<point> f1(l0P, l0F[faceI]);
+                    UIndirectList<point> f2(l1P, l1F[faceI]);
+
+                    Pout<< " Face: " << faceI << nl
+                        << " Points: " << nl << f1 << nl << f2 << nl
+                        << " Anchors ::" << nl
+                        << mAnchors[half0.index()][faceI] << nl
+                        << mAnchors[half1.index()][faceI] << nl
+                        << " Centres ::" << nl
+                        << half0Centres[faceI] << nl
+                        << half1Centres[faceI] << nl
+                        << " Tolerance: " << pTol << nl
+                        << " Measured Anchor distance: " << distA << nl
+                        << " Measured Centre distance: " << distC << nl
+                        << endl;
+                }
+            }
+
+            if (misMatchError)
+            {
+                // Write out to disk
+                meshOps::writeVTK
+                (
+                    (*this),
+                    half0.name(),
+                    identity(half0.size()),
+                    2,
+                    half0.localPoints(),
+                    List<edge>(0),
+                    half0.localFaces()
+                );
+
+                // Write out to disk
+                meshOps::writeVTK
+                (
+                    (*this),
+                    half1.name(),
+                    identity(half1.size()),
+                    2,
+                    half1.localPoints(),
+                    List<edge>(0),
+                    half1.localFaces()
+                );
             }
         }
     }
@@ -7129,25 +7138,37 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
             continue;
         }
 
+        const polyPatch& patch = boundary[patchI];
+
         // Skip if not cyclic
-        if (!isA<cyclicPolyPatch>(boundary[patchI]))
+        if (!isA<cyclicPolyPatch>(patch))
         {
             continue;
         }
 
         const coupleMap& cMap = patchCoupling_[patchI].map();
+        const cyclicPolyPatch& half0 = refCast<const cyclicPolyPatch>(patch);
+
+        // Skip the neighbor patch of the cyclic
+        if (half0.neighbour())
+        {
+            continue;
+        }
+
+        // Fetch the other half
+        const cyclicPolyPatch& half1 = half0.neighbPatch();
 
         // Match faces and points in one go
-        label halfSize = boundary[patchI].size() / 2;
-        label patchStart = boundary[patchI].start();
+        const label half0Start = half0.start();
+        const label half1Start = half1.start();
 
         // Fetch reference to map
         const Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
 
-        for (label i = 0; i < halfSize; i++)
+        forAll(half0, faceI)
         {
-            label half0Index = (i + patchStart);
-            label half1Index = (i + halfSize + patchStart);
+            const label half0Index = (half0Start + faceI);
+            const label half1Index = (half1Start + faceI);
 
             // Map the face
             cMap.mapSlave
@@ -7176,22 +7197,22 @@ void dynamicTopoFvMesh::buildLocalCoupledMaps()
                     continue;
                 }
 
-                label masterIndex = half0Face[pointI];
-                label slaveIndex = half1Face[(fS - pointI) % fS];
+                const label p0Index = half0Face[pointI];
+                const label p1Index = half1Face[(fS - pointI) % fS];
 
                 // Map the point
                 cMap.mapSlave
                 (
                     coupleMap::POINT,
-                    masterIndex,
-                    slaveIndex
+                    p0Index,
+                    p1Index
                 );
 
                 cMap.mapMaster
                 (
                     coupleMap::POINT,
-                    slaveIndex,
-                    masterIndex
+                    p1Index,
+                    p0Index
                 );
             }
 
