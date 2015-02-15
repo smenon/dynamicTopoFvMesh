@@ -1,7 +1,7 @@
 #!/bin/sh
 set -x
 
-wmakeLnInclude enginePointPatchFields
+wmakeLnInclude customPointPatchFields
 wmakeLnInclude mesquiteMotionSolver
 wmakeLnInclude dynamicTopoFvMesh
 

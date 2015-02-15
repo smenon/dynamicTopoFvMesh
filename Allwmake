@@ -21,7 +21,7 @@ fi
 
 ./AllwmakeLnInclude
 
-wmake libso enginePointPatchFields
+wmake libso customPointPatchFields
 wmake libso mesquiteMotionSolver
 wmake libso dynamicTopoFvMesh
 

@@ -3,7 +3,7 @@ set -x
 
 # Clean out existing object files
 wclean mesquiteMotionSolver
-wclean enginePointPatchFields
+wclean customPointPatchFields
 wclean dynamicTopoFvMesh
 
 (cd fluxCorrector; ./Allwclean)
