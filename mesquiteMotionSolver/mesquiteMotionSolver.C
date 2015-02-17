@@ -99,6 +99,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
         ),
         mesh.points()
     ),
+    fvpDict_(0),
     basePoints_(0),
     boundaryConditions_(0),
     oldVolume_(0.0)
@@ -148,6 +149,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
         ),
         mesh.points()
     ),
+    fvpDict_(0),
     basePoints_(0),
     boundaryConditions_(0),
     oldVolume_(0.0)
@@ -310,6 +312,48 @@ void mesquiteMotionSolver::readOptions()
                 pMesh
             )
         );
+    }
+    else
+    if (optionsDict.found("fixedValuePatches"))
+    {
+        // Check for existence of fixedValuePatches
+        IOobject fvpIO("fixedValuePatches", Mesh_.time().timeName(), Mesh_);
+
+        if (fvpIO.headerOk())
+        {
+            fvpDict_.reset
+            (
+                new IOdictionary
+                (
+                    IOobject
+                    (
+                        "fixedValuePatches",
+                        Mesh_.time().timeName(),
+                        Mesh_,
+                        IOobject::MUST_READ,
+                        IOobject::AUTO_WRITE
+                    )
+                )
+            );
+        }
+        else
+        {
+            fvpDict_.reset
+            (
+                new IOdictionary
+                (
+                    IOobject
+                    (
+                        "fixedValuePatches",
+                        Mesh_.time().timeName(),
+                        Mesh_,
+                        IOobject::NO_READ,
+                        IOobject::AUTO_WRITE
+                    ),
+                    optionsDict.subDict("fixedValuePatches")
+                )
+            );
+        }
     }
 
     // Check if any slip patches are specified
@@ -4149,9 +4193,6 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         Info<< "Applying fixed-value patches, if any" << endl;
     }
 
-    // Fetch the sub-dictionary
-    const dictionary& optionsDict = subDict("mesquiteOptions");
-
     // Fetch reference to boundary
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
@@ -4212,22 +4253,27 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         }
     }
     else
-    if (optionsDict.found("fixedValuePatches"))
+    if (fvpDict_.valid())
     {
         // Check the dictionary for entries corresponding to constant
         // fixed-displacement BCs. This is done because a 'motionU'
         // field is not used to specify such BC types.
-        const dictionary& fvpDict = optionsDict.subDict("fixedValuePatches");
+        IOdictionary& fvpDict = fvpDict_();
 
         // Extract a list of patch names.
         wordList fixPatches = fvpDict.toc();
+        OStringStream outputStream(IOstream::BINARY);
+
+        // Start output stream
+        outputStream << token::BEGIN_BLOCK << token::NL;
 
         // Accumulate a set of points, so that common-points
         // are not moved twice. If an overlap exists, the
         // last entry is used.
         forAll(fixPatches, wordI)
         {
-            label patchI = boundary.findPatchID(fixPatches[wordI]);
+            const word& patchName = fixPatches[wordI];
+            const label patchI = boundary.findPatchID(patchName);
 
             if (patchI == -1)
             {
@@ -4235,7 +4281,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
                 (
                     "void mesquiteMotionSolver::applyFixedValuePatches()"
                 )
-                    << "Cannot find patch: " << fixPatches[wordI]
+                    << "Cannot find patch: " << patchName
                     << abort(FatalError);
             }
 
@@ -4246,12 +4292,28 @@ void mesquiteMotionSolver::applyFixedValuePatches()
                 (
                     pMesh.boundary()[patchI],
                     dPointField,
-                    fvpDict.subDict(fixPatches[wordI])
+                    fvpDict.subDict(patchName)
                 )
             );
 
             pField().updateCoeffs();
+
+            // Write out contents to stream
+            outputStream << patchName
+                         << token::NL << token::BEGIN_BLOCK
+                         << pField()
+                         << token::NL << token::END_BLOCK
+                         << token::NL;
         }
+
+        // Finish output stream
+        outputStream << token::END_BLOCK << token::NL;
+
+        // Create an input stream from contents
+        IStringStream inputStream(outputStream.str(), IOstream::BINARY);
+
+        // Read updated contents from stream
+        inputStream >> fvpDict;
     }
 
     // Sync displacements in parallel

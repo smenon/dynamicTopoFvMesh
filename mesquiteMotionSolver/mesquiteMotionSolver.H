@@ -154,6 +154,9 @@ class mesquiteMotionSolver
         //- Original points prior to surface-smoothing
         mutable pointField origPoints_;
 
+        //- Dictionary for fixedValue patches
+        mutable autoPtr<IOdictionary> fvpDict_;
+
         //- Base points for pointDisplacement boundary conditions
         mutable autoPtr<pointVectorField> basePoints_;
 
