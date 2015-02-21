@@ -1,4 +1,5 @@
 derived/timeVaryingDisplacement/timeVaryingDisplacementPointPatchVectorField.C
 derived/rotatingTranslation/rotatingTranslationPointPatchVectorField.C
+derived/motionSixDoF/motionSixDoFPointPatchVectorField.C
 
 LIB = $(FOAM_USER_LIBBIN)/libcustomPointPatchFields
