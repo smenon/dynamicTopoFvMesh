@@ -186,10 +186,11 @@ void motionSixDoFPointPatchVectorField::updateCoeffs()
     const pointPatch& ptPatch = this->patch();
 
     // Store the motion state at the beginning of the time-step
+    const tensor oQ = motion_.orientation();
+    const vector oCoR = motion_.centreOfRotation();
+
     if (curTimeIndex_ != t.timeIndex())
     {
-        oldQ_ = motion_.orientation();
-        oldCoR_ = motion_.centreOfRotation();
         motion_.newTime();
         curTimeIndex_ = t.timeIndex();
     }
@@ -231,14 +232,16 @@ void motionSixDoFPointPatchVectorField::updateCoeffs()
         t.deltaTValue()
     );
 
-    // Apply incremental rotation / displacement
-    const tensor& Q = motion_.orientation();
-    const vector& CoR = motion_.centreOfRotation();
+    // Create an 'initialPoints' field from patch local points
+    const vector& iCoR = motion_.initialCentreOfMass();
+
+    const vector R = (iCoR - oCoR);
     const pointField& lP = ptPatch.localPoints();
+    const vectorField initialPoints = iCoR + (oQ.T() & ((lP + R) - iCoR));
 
     Field<vector>::operator=
     (
-        (CoR + (Q & oldQ_.T() & (lP - oldCoR_))) - lP
+        motion_.transform(initialPoints) - initialPoints
     );
 
     fixedValuePointPatchField<vector>::updateCoeffs();

@@ -91,12 +91,6 @@ class motionSixDoFPointPatchVectorField
         //- Current time index (used for updating)
         label curTimeIndex_;
 
-        //- Previous centre of rotation
-        vector oldCoR_;
-
-        //- Previous orientation
-        tensor oldQ_;
-
 public:
 
     //- Runtime type information
