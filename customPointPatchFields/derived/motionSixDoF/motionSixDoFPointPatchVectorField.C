@@ -52,7 +52,8 @@ motionSixDoFPointPatchVectorField::motionSixDoFPointPatchVectorField
     rhoName_("rho"),
     lookupGravity_(-1),
     g_(vector::zero),
-    curTimeIndex_(-1)
+    curTimeIndex_(-1),
+    absolute_(true)
 {}
 
 
@@ -69,7 +70,8 @@ motionSixDoFPointPatchVectorField::motionSixDoFPointPatchVectorField
     rhoName_(dict.lookupOrDefault<word>("rhoName", "rho")),
     lookupGravity_(-1),
     g_(vector::zero),
-    curTimeIndex_(-1)
+    curTimeIndex_(-1),
+    absolute_(dict.lookup("absolute"))
 {
     if (rhoName_ == "rhoInf")
     {
@@ -102,7 +104,8 @@ motionSixDoFPointPatchVectorField::motionSixDoFPointPatchVectorField
     rhoName_(ptf.rhoName_),
     lookupGravity_(ptf.lookupGravity_),
     g_(ptf.g_),
-    curTimeIndex_(-1)
+    curTimeIndex_(-1),
+    absolute_(ptf.absolute_)
 {}
 
 
@@ -118,7 +121,8 @@ motionSixDoFPointPatchVectorField::motionSixDoFPointPatchVectorField
     rhoName_(ptf.rhoName_),
     lookupGravity_(ptf.lookupGravity_),
     g_(ptf.g_),
-    curTimeIndex_(-1)
+    curTimeIndex_(-1),
+    absolute_(ptf.absolute_)
 {}
 
 
@@ -232,17 +236,33 @@ void motionSixDoFPointPatchVectorField::updateCoeffs()
         t.deltaTValue()
     );
 
-    // Create an 'initialPoints' field from patch local points
-    const vector& iCoR = motion_.initialCentreOfMass();
+    if (absolute_)
+    {
+        // Create an 'initialPoints' field from patch local points
+        const vector& iCoR = motion_.initialCentreOfMass();
 
-    const vector R = (iCoR - oCoR);
-    const pointField& lP = ptPatch.localPoints();
-    const vectorField initialPoints = iCoR + (oQ.T() & ((lP + R) - iCoR));
+        const vector R = (iCoR - oCoR);
+        const pointField& lP = ptPatch.localPoints();
+        const vectorField initialPoints = iCoR + (oQ.T() & ((lP + R) - iCoR));
 
-    Field<vector>::operator=
-    (
-        motion_.transform(initialPoints) - initialPoints
-    );
+        Field<vector>::operator=
+        (
+            motion_.transform(initialPoints) - initialPoints
+        );
+    }
+    else
+    {
+        // Apply incremental rotation / displacement
+        const pointField& lP = ptPatch.localPoints();
+
+        const tensor& Q = motion_.orientation();
+        const vector& CoR = motion_.centreOfRotation();
+
+        Field<vector>::operator=
+        (
+            (CoR + (Q & oQ.T() & (lP - oCoR))) - lP
+        );
+    }
 
     fixedValuePointPatchField<vector>::updateCoeffs();
 }
@@ -265,6 +285,8 @@ void motionSixDoFPointPatchVectorField::write(Ostream& os) const
     }
 
     motion_.write(os);
+
+    os.writeKeyword("absolute") << absolute_ << token::END_STATEMENT << nl;
 
     writeEntry("value", os);
 }

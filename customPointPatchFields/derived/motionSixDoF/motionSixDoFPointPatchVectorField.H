@@ -91,6 +91,9 @@ class motionSixDoFPointPatchVectorField
         //- Current time index (used for updating)
         label curTimeIndex_;
 
+        //- Use absolute / relative formulation
+        Switch absolute_;
+
 public:
 
     //- Runtime type information
