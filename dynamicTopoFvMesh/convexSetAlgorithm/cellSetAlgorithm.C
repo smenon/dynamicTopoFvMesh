@@ -59,12 +59,31 @@ void cellSetAlgorithm::constructSearchTree() const
             << abort(FatalError);
     }
 
+    treeBoundBox bBox(mesh_.cellCentres());
+
+    // Account for possibly degenerate bounding boxes
+    // by artificially inflating in the degenerate dimension
+    const scalar rVal = 1e-10;
+    const scalar cutOff = 0.001;
+    const vector boxSpan = bBox.span();
+    const scalar magSpan = (magSqr(boxSpan) > rVal) ? magSqr(boxSpan) : rVal;
+    const scalar magCutOff = (cutOff * magSpan);
+
+    for (label cmpt = 0; cmpt < pTraits<vector>::nComponents; cmpt++)
+    {
+        if (boxSpan[cmpt] < magCutOff)
+        {
+            bBox.min()[cmpt] -= magCutOff;
+            bBox.max()[cmpt] += magCutOff;
+        }
+    }
+
     searchTreePtr_ =
     (
         new SearchTreeType
         (
             mappingTreeData(mesh_.cellCentres()),
-            treeBoundBox(mesh_.cellCentres()).extend(random_, 0.001),
+            bBox,
             8, 10.0, 5.0
         )
     );
