@@ -380,7 +380,7 @@ class dynamicTopoFvMesh
         void loadMetric();
 
         // Load the mesh-motion solver
-        void loadMotionSolver();
+        void loadMotionSolver(const bool redistribute = false);
 
         // Load the field mapper
         void loadFieldMapper();

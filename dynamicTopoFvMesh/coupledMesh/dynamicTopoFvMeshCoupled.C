@@ -530,14 +530,13 @@ void dynamicTopoFvMesh::executeLoadBalancing
     // Clear pointers and re-initialize
     mapper_.clear();
     eMeshPtr_.clear();
-    motionSolver_.clear();
     lengthEstimator_.clear();
 
     // Initialize edge-related connectivity structures
     initEdges();
 
     // Load the mesh-motion solver
-    loadMotionSolver();
+    loadMotionSolver(true);
 
     // Load the field-mapper
     loadFieldMapper();

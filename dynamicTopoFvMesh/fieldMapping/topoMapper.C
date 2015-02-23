@@ -50,6 +50,9 @@ namespace Foam
 
 List<pointScalarField*> topoMapper::psFieldPtrs_;
 List<pointVectorField*> topoMapper::pvFieldPtrs_;
+List<pointTensorField*> topoMapper::ptFieldPtrs_;
+List<pointSymmTensorField*> topoMapper::psytFieldPtrs_;
+List<pointSphericalTensorField*> topoMapper::psptFieldPtrs_;
 
 // * * * * * * * * * * * * * Private Member Functions  * * * * * * * * * * * //
 
@@ -226,6 +229,9 @@ void topoMapper::deregisterPointFields(const objectRegistry& registry)
 {
     topoMapper::deregisterPointFields(registry, psFieldPtrs_);
     topoMapper::deregisterPointFields(registry, pvFieldPtrs_);
+    topoMapper::deregisterPointFields(registry, ptFieldPtrs_);
+    topoMapper::deregisterPointFields(registry, psytFieldPtrs_);
+    topoMapper::deregisterPointFields(registry, psptFieldPtrs_);
 }
 
 
@@ -234,6 +240,9 @@ void topoMapper::reregisterPointFields(const objectRegistry& registry)
 {
     topoMapper::reregisterPointFields(registry, psFieldPtrs_);
     topoMapper::reregisterPointFields(registry, pvFieldPtrs_);
+    topoMapper::reregisterPointFields(registry, ptFieldPtrs_);
+    topoMapper::reregisterPointFields(registry, psytFieldPtrs_);
+    topoMapper::reregisterPointFields(registry, psptFieldPtrs_);
 }
 
 
@@ -671,6 +680,30 @@ template <>
 const List<pointVectorField*>& topoMapper::pointFieldList() const
 {
     return pvFieldPtrs_;
+}
+
+
+//- Fetch the pointField list (template specialisation)
+template <>
+const List<pointTensorField*>& topoMapper::pointFieldList() const
+{
+    return ptFieldPtrs_;
+}
+
+
+//- Fetch the pointField list (template specialisation)
+template <>
+const List<pointSymmTensorField*>& topoMapper::pointFieldList() const
+{
+    return psytFieldPtrs_;
+}
+
+
+//- Fetch the pointField list (template specialisation)
+template <>
+const List<pointSphericalTensorField*>& topoMapper::pointFieldList() const
+{
+    return psptFieldPtrs_;
 }
 
 

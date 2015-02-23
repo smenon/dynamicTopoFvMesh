@@ -102,6 +102,9 @@ private:
         //- Registered pointFields
         static List<pointScalarField*> psFieldPtrs_;
         static List<pointVectorField*> pvFieldPtrs_;
+        static List<pointTensorField*> ptFieldPtrs_;
+        static List<pointSymmTensorField*> psytFieldPtrs_;
+        static List<pointSphericalTensorField*> psptFieldPtrs_;
 
     // Demand-driven private data
 

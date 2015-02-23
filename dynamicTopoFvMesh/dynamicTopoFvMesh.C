@@ -2016,15 +2016,26 @@ void dynamicTopoFvMesh::loadMetric()
 
 
 // Load the mesh-motion solver
-void dynamicTopoFvMesh::loadMotionSolver()
+void dynamicTopoFvMesh::loadMotionSolver(const bool redistribute)
 {
     if (motionSolver_.valid())
     {
-        FatalErrorIn
-        (
-            "void dynamicTopoFvMesh::loadMotionSolver() "
-        ) << nl << " Motion solver already loaded. "
-          << abort(FatalError);
+        if (redistribute)
+        {
+            // Mesh is undergoing re-distribution
+            const mapPolyMesh& mpm = *reinterpret_cast< mapPolyMesh* >(0);
+
+            // Update motion solver with a dummy mapPolyMesh
+            motionSolver_->updateMesh(mpm);
+        }
+        else
+        {
+            FatalErrorIn
+            (
+                "void dynamicTopoFvMesh::loadMotionSolver() "
+            ) << nl << " Motion solver already loaded. "
+              << abort(FatalError);
+        }
     }
     else
     if (dict_.found("solver") && loadMotionSolver_)
@@ -4620,6 +4631,9 @@ void dynamicTopoFvMesh::mapFields(const mapPolyMesh& mpm)
     // Map all registered pointFields
     mapPointFields<pointScalarField>(fieldMapper);
     mapPointFields<pointVectorField>(fieldMapper);
+    mapPointFields<pointTensorField>(fieldMapper);
+    mapPointFields<pointSymmTensorField>(fieldMapper);
+    mapPointFields<pointSphericalTensorField>(fieldMapper);
 }
 
 
