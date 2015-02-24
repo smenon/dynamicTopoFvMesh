@@ -3958,10 +3958,18 @@ void mesquiteMotionSolver::transferBuffers
         {
             if (fix)
             {
+                vector smallVec(VSMALL, VSMALL, VSMALL);
+
                 // Fix field values
                 forAllConstIter(Map<label>, pointMap, pIter)
                 {
-                    field[pIter.key()] = recvField[pIter()];
+                    const vector& rVector = recvField[pIter()];
+                    const vector& sVector = field[pIter.key()];
+
+                    if (cmptMag(sVector) < smallVec)
+                    {
+                        field[pIter.key()] = rVector;
+                    }
                 }
             }
             else
@@ -4228,8 +4236,8 @@ void mesquiteMotionSolver::applyFixedValuePatches()
         {
             const polyPatch& patch = boundary[patchI];
 
-            // Skip processor patches
-            if (isA<processorPolyPatch>(patch))
+            // Skip empty / processor patches
+            if (isA<emptyPolyPatch>(patch) || isA<processorPolyPatch>(patch))
             {
                 continue;
             }

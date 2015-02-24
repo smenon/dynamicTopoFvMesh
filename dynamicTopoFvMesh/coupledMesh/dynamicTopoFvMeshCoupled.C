@@ -9559,12 +9559,22 @@ bool dynamicTopoFvMesh::syncCoupledBoundaryOrdering
 
             writeVTK
             (
-                "patchFaces_"
+                "patchFacesOld_"
               + Foam::name(Pstream::myProcNo())
               + '_'
               + Foam::name(neiProcNo),
                 identity(patchSizes_[pI]) + patchStarts_[pI],
                 2, false, true
+            );
+
+            writeVTK
+            (
+                "patchFacesNew_"
+              + Foam::name(Pstream::myProcNo())
+              + '_'
+              + Foam::name(neiProcNo),
+                identity(patchSizes_[pI]) + patchStarts_[pI],
+                2
             );
         }
 
