@@ -69,7 +69,7 @@ timeVaryingDisplacementPointPatchVectorField
     const dictionary& dict
 )
 :
-    fixedValuePointPatchVectorField(p, iF, dict),
+    fixedValuePointPatchVectorField(p, iF, dict, false),
     axis_(dict.lookup("axis")),
     profileFile_(dict.lookup("profileFile")),
     table_(profileFile_)
@@ -143,8 +143,6 @@ void timeVaryingDisplacementPointPatchVectorField::write(Ostream& os) const
 
     os.writeKeyword("profileFile")
         << profileFile_ << token::END_STATEMENT << nl;
-
-    writeEntry("value", os);
 }
 
 
