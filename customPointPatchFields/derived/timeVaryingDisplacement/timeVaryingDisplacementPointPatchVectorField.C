@@ -136,6 +136,8 @@ void timeVaryingDisplacementPointPatchVectorField::updateCoeffs()
 
 void timeVaryingDisplacementPointPatchVectorField::write(Ostream& os) const
 {
+    pointPatchVectorField::write(os);
+
     os.writeKeyword("axis")
         << axis_ << token::END_STATEMENT << nl;
 

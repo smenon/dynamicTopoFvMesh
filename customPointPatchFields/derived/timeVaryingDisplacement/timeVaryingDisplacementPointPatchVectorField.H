@@ -42,6 +42,7 @@ SourceFiles
 #define timeVaryingDisplacementPointPatchVectorField_H
 
 #include "fixedValuePointPatchFields.H"
+#include "pointPatchFieldsFwd.H"
 #include "interpolationTable.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -101,9 +102,9 @@ public:
         );
 
         //- Construct and return a clone
-        virtual autoPtr<pointPatchField<vector> > clone() const
+        virtual autoPtr<pointPatchVectorField> clone() const
         {
-            return autoPtr<pointPatchField<vector> >
+            return autoPtr<pointPatchVectorField>
             (
                 new timeVaryingDisplacementPointPatchVectorField(*this)
             );
@@ -117,12 +118,12 @@ public:
         );
 
         //- Construct and return a clone setting internal field reference
-        virtual autoPtr<pointPatchField<vector> > clone
+        virtual autoPtr<pointPatchVectorField> clone
         (
             const DimensionedField<vector, pointMesh>& iF
         ) const
         {
-            return autoPtr<pointPatchField<vector> >
+            return autoPtr<pointPatchVectorField>
             (
                 new timeVaryingDisplacementPointPatchVectorField(*this, iF)
             );

@@ -856,9 +856,6 @@ void coupledInfo<MeshType>::setPointField
     typedef typename GeomField::GeometricBoundaryField GeomBdyFieldType;
     typedef typename GeomField::DimensionedInternalField DimInternalField;
 
-    // Fetch the reference to the pointMesh
-    const pointMesh& pMesh = pointMesh::New(subMesh());
-
     // Size up the pointer list
     fields.setSize(fieldNames.size());
 
@@ -869,6 +866,9 @@ void coupledInfo<MeshType>::setPointField
 
     forAll(fieldNames, i)
     {
+        // Fetch the reference to the pointMesh
+        const pointMesh& pMesh = pointMesh::New(subMesh());
+
         // Create and map the patch field values
         label nPatches = pMesh.boundary().size();
 
