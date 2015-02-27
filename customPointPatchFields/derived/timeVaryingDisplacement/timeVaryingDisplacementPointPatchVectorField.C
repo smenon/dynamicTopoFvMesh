@@ -57,7 +57,9 @@ timeVaryingDisplacementPointPatchVectorField
 :
     fixedValuePointPatchVectorField(p, iF),
     axis_(vector::zero),
-    profileFile_("NoFileSpecified")
+    profileFile_("NoFileSpecified"),
+    engineTime_(false),
+    rpm_(0)
 {}
 
 
@@ -72,7 +74,9 @@ timeVaryingDisplacementPointPatchVectorField
     fixedValuePointPatchVectorField(p, iF, dict, false),
     axis_(dict.lookup("axis")),
     profileFile_(dict.lookup("profileFile")),
-    table_(profileFile_)
+    table_(profileFile_),
+    engineTime_(dict.lookupOrDefault<Switch>("engineTime", false)),
+    rpm_(engineTime_ ? readScalar(dict.lookup("rpm")) : 0)
 {
     // Normalize the axis
     axis_ /= mag(axis_) + VSMALL;
@@ -94,7 +98,9 @@ timeVaryingDisplacementPointPatchVectorField
     fixedValuePointPatchVectorField(ptf, p, iF, mapper),
     axis_(ptf.axis_),
     profileFile_(ptf.profileFile_),
-    table_(ptf.table_)
+    table_(ptf.table_),
+    engineTime_(ptf.engineTime_),
+    rpm_(ptf.rpm_)
 {}
 
 
@@ -108,7 +114,9 @@ timeVaryingDisplacementPointPatchVectorField
     fixedValuePointPatchVectorField(ptf, iF),
     axis_(ptf.axis_),
     profileFile_(ptf.profileFile_),
-    table_(ptf.table_)
+    table_(ptf.table_),
+    engineTime_(ptf.engineTime_),
+    rpm_(ptf.rpm_)
 {}
 
 
@@ -122,11 +130,24 @@ void timeVaryingDisplacementPointPatchVectorField::updateCoeffs()
     }
 
     const polyMesh& mesh = this->dimensionedInternalField().mesh()();
+
+    // Fetch time values
     const Time& t = mesh.time();
+    const scalar deltaT = t.deltaT().value();
+
+    scalar newTime = t.value();
+    scalar oldTime = newTime - deltaT;
+
+    // Convert from degrees to actual time
+    if (engineTime_)
+    {
+        newTime /= (6.0 * rpm_);
+        oldTime /= (6.0 * rpm_);
+    }
 
     // Fetch old / new displacement values
-    scalar newVal = table_(t.value());
-    scalar oldVal = table_(t.value() - t.deltaT().value());
+    scalar newVal = table_(newTime);
+    scalar oldVal = table_(oldTime);
 
     Field<vector>::operator= ( axis_ * (newVal - oldVal) );
 
@@ -143,6 +164,12 @@ void timeVaryingDisplacementPointPatchVectorField::write(Ostream& os) const
 
     os.writeKeyword("profileFile")
         << profileFile_ << token::END_STATEMENT << nl;
+
+    os.writeKeyword("engineTime")
+        << engineTime_ << token::END_STATEMENT << nl;
+
+    os.writeKeyword("rpm")
+        << rpm_ << token::END_STATEMENT << nl;
 }
 
 

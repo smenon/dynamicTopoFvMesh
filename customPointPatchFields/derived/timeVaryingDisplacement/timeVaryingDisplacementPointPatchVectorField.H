@@ -44,6 +44,7 @@ SourceFiles
 #include "fixedValuePointPatchFields.H"
 #include "pointPatchFieldsFwd.H"
 #include "interpolationTable.H"
+#include "Switch.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -68,6 +69,12 @@ class timeVaryingDisplacementPointPatchVectorField
 
         //- Interpolation table
         interpolationTable<scalar> table_;
+
+        //- Engine time option
+        Switch engineTime_;
+
+        //- RPM for engine time
+        scalar rpm_;
 
 public:
 

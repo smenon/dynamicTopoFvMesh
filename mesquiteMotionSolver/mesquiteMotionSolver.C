@@ -4294,9 +4294,9 @@ void mesquiteMotionSolver::applyFixedValuePatches()
             }
 
             // Create a patchField and evaluate.
-            autoPtr<pointPatchField<point> > pField
+            autoPtr<pointPatchVectorField> pField
             (
-                pointPatchField<point>::New
+                pointPatchVectorField::New
                 (
                     pMesh.boundary()[patchI],
                     dPointField,
@@ -4304,7 +4304,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
                 )
             );
 
-            pField().updateCoeffs();
+            pField().evaluate();
 
             // Write out contents to stream
             outputStream << patchName
