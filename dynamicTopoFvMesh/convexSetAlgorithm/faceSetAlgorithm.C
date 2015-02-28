@@ -142,15 +142,15 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
     // If so, artificially inflate in the degenerate dimension
     const scalar cutOff = 0.01;
     const vector boxSpan = box_.span();
-    const scalar magSpan = magSqr(boxSpan);
+    const scalar magSpan = mag(boxSpan);
     const scalar magCutOff = (cutOff * magSpan);
 
     for (label cmpt = 0; cmpt < pTraits<vector>::nComponents; cmpt++)
     {
         if (boxSpan[cmpt] < magCutOff)
         {
-            box_.min()[cmpt] -= magCutOff;
-            box_.max()[cmpt] += magCutOff;
+            box_.min()[cmpt] -= magSpan;
+            box_.max()[cmpt] += magSpan;
         }
     }
 
