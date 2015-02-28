@@ -474,11 +474,23 @@ void dynamicTopoFvMesh::executeLoadBalancing
     // Set the coupledModification switch
     setCoupledModification();
 
+    // De-register motionSolver before re-distribution
+    if (motionSolver_.valid())
+    {
+        objectRegistry::checkOut(motionSolver_());
+    }
+
     // Initialize the mesh distribution engine
     fvMeshDistribute distributor(*this, mergeDist);
 
     // Re-distribute mesh according to new decomposition
     distributor.distribute(cellDistribution);
+
+    // Re-register motionSolver after re-distribution
+    if (motionSolver_.valid())
+    {
+        objectRegistry::checkIn(motionSolver_());
+    }
 
     // Reset the coupledModification switch
     unsetCoupledModification();
