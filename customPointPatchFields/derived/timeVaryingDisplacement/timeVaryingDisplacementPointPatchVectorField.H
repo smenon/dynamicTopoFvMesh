@@ -57,7 +57,7 @@ namespace Foam
 
 class timeVaryingDisplacementPointPatchVectorField
 :
-    public fixedValuePointPatchField<vector>
+    public fixedValuePointPatchVectorField
 {
     // Private data
 

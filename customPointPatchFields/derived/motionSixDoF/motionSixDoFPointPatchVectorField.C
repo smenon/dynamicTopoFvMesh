@@ -46,7 +46,7 @@ motionSixDoFPointPatchVectorField::motionSixDoFPointPatchVectorField
     const DimensionedField<vector, pointMesh>& iF
 )
 :
-    fixedValuePointPatchField<vector>(p, iF),
+    fixedValuePointPatchVectorField(p, iF),
     motion_(),
     rhoInf_(1.0),
     rhoName_("rho"),
@@ -64,7 +64,7 @@ motionSixDoFPointPatchVectorField::motionSixDoFPointPatchVectorField
     const dictionary& dict
 )
 :
-    fixedValuePointPatchField<vector>(p, iF, dict),
+    fixedValuePointPatchVectorField(p, iF, dict),
     motion_(dict, dict),
     rhoInf_(1.0),
     rhoName_(dict.lookupOrDefault<word>("rhoName", "rho")),
@@ -98,7 +98,7 @@ motionSixDoFPointPatchVectorField::motionSixDoFPointPatchVectorField
     const pointPatchFieldMapper& mapper
 )
 :
-    fixedValuePointPatchField<vector>(ptf, p, iF, mapper),
+    fixedValuePointPatchVectorField(ptf, p, iF, mapper),
     motion_(ptf.motion_),
     rhoInf_(ptf.rhoInf_),
     rhoName_(ptf.rhoName_),
@@ -115,7 +115,7 @@ motionSixDoFPointPatchVectorField::motionSixDoFPointPatchVectorField
     const DimensionedField<vector, pointMesh>& iF
 )
 :
-    fixedValuePointPatchField<vector>(ptf, iF),
+    fixedValuePointPatchVectorField(ptf, iF),
     motion_(ptf.motion_),
     rhoInf_(ptf.rhoInf_),
     rhoName_(ptf.rhoName_),
@@ -133,13 +133,13 @@ void motionSixDoFPointPatchVectorField::autoMap
     const pointPatchFieldMapper& m
 )
 {
-    fixedValuePointPatchField<vector>::autoMap(m);
+    fixedValuePointPatchVectorField::autoMap(m);
 }
 
 
 void motionSixDoFPointPatchVectorField::rmap
 (
-    const pointPatchField<vector>& ptf,
+    const pointPatchVectorField& ptf,
     const labelList& addr
 )
 {
@@ -148,7 +148,7 @@ void motionSixDoFPointPatchVectorField::rmap
         refCast<const motionSixDoFPointPatchVectorField>(ptf)
     );
 
-    fixedValuePointPatchField<vector>::rmap(sDoFptf, addr);
+    fixedValuePointPatchVectorField::rmap(sDoFptf, addr);
 }
 
 
@@ -264,13 +264,13 @@ void motionSixDoFPointPatchVectorField::updateCoeffs()
         );
     }
 
-    fixedValuePointPatchField<vector>::updateCoeffs();
+    fixedValuePointPatchVectorField::updateCoeffs();
 }
 
 
 void motionSixDoFPointPatchVectorField::write(Ostream& os) const
 {
-    pointPatchField<vector>::write(os);
+    pointPatchVectorField::write(os);
 
     os.writeKeyword("rhoName") << rhoName_ << token::END_STATEMENT << nl;
 

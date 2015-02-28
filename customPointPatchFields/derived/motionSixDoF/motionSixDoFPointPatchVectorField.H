@@ -42,8 +42,9 @@ SourceFiles
 #ifndef motionSixDoFPointPatchVectorField_H
 #define motionSixDoFPointPatchVectorField_H
 
-#include "fixedValuePointPatchField.H"
+#include "fixedValuePointPatchFields.H"
 #include "sixDoFRigidBodyMotion.H"
+#include "pointPatchFieldsFwd.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -56,7 +57,7 @@ namespace Foam
 
 class motionSixDoFPointPatchVectorField
 :
-    public fixedValuePointPatchField<vector>
+    public fixedValuePointPatchVectorField
 {
     // Private data
 
@@ -127,14 +128,11 @@ public:
         );
 
         //- Construct and return a clone
-        virtual autoPtr<pointPatchField<vector> > clone() const
+        virtual autoPtr<pointPatchVectorField> clone() const
         {
-            return autoPtr<pointPatchField<vector> >
+            return autoPtr<pointPatchVectorField>
             (
-                new motionSixDoFPointPatchVectorField
-                (
-                    *this
-                )
+                new motionSixDoFPointPatchVectorField(*this)
             );
         }
 
@@ -146,18 +144,14 @@ public:
         );
 
         //- Construct and return a clone setting internal field reference
-        virtual autoPtr<pointPatchField<vector> > clone
+        virtual autoPtr<pointPatchVectorField> clone
         (
             const DimensionedField<vector, pointMesh>& iF
         ) const
         {
             return autoPtr<pointPatchField<vector> >
             (
-                new motionSixDoFPointPatchVectorField
-                (
-                    *this,
-                    iF
-                )
+                new motionSixDoFPointPatchVectorField(*this, iF)
             );
         }
 
@@ -175,7 +169,7 @@ public:
             //- Reverse map the given pointPatchField onto this pointPatchField
             virtual void rmap
             (
-                const pointPatchField<vector>&,
+                const pointPatchVectorField&,
                 const labelList&
             );
 
