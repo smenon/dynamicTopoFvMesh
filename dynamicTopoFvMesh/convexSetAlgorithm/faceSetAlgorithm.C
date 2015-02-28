@@ -59,12 +59,31 @@ void faceSetAlgorithm::constructSearchTree() const
             << abort(FatalError);
     }
 
+    treeBoundBox bBox(candidatePoints_);
+
+    // Account for possibly degenerate bounding boxes
+    // by artificially inflating in the degenerate dimension
+    const scalar rVal = 1e-10;
+    const scalar cutOff = 0.001;
+    const vector boxSpan = bBox.span();
+    const scalar magSpan = (magSqr(boxSpan) > rVal) ? magSqr(boxSpan) : rVal;
+    const scalar magCutOff = (cutOff * magSpan);
+
+    for (label cmpt = 0; cmpt < pTraits<vector>::nComponents; cmpt++)
+    {
+        if (boxSpan[cmpt] < magCutOff)
+        {
+            bBox.min()[cmpt] -= magCutOff;
+            bBox.max()[cmpt] += magCutOff;
+        }
+    }
+
     searchTreePtr_ =
     (
         new SearchTreeType
         (
             mappingTreeData(candidatePoints_),
-            treeBoundBox(candidatePoints_).extend(random_, 0.001),
+            bBox,
             8, 10.0, 5.0
         )
     );
@@ -121,7 +140,7 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
 
     // Axis-aligned faces can result in degenerate bounding boxes.
     // If so, artificially inflate in the degenerate dimension
-    const scalar cutOff = 0.001;
+    const scalar cutOff = 0.01;
     const vector boxSpan = box_.span();
     const scalar magSpan = magSqr(boxSpan);
     const scalar magCutOff = (cutOff * magSpan);
@@ -139,8 +158,8 @@ void faceSetAlgorithm::computeNormFactor(const label index) const
     vector maxToXb = (box_.max() - box_.midpoint());
 
     // Scale it by a bit
-    box_.min() += (1.5 * minToXb);
-    box_.max() += (1.5 * maxToXb);
+    box_.min() += (2.0 * minToXb);
+    box_.max() += (2.0 * maxToXb);
 }
 
 
