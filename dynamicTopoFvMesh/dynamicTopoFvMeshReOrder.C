@@ -138,7 +138,12 @@ void dynamicTopoFvMesh::reOrderPoints
     }
 
     // Renumber subMesh map points
-    mapper_->renumberMapPoints(addedPointRenumbering_);
+    mapper_->renumberMapPoints
+    (
+        nOldPoints_,
+        reversePointMap_,
+        addedPointRenumbering_
+    );
 
     // Prepare the pointZoneMap
     pointZoneMesh& pointZones = polyMesh::pointZones();

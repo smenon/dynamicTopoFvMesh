@@ -291,7 +291,12 @@ public:
         ) const;
 
         //- Renumber map points after re-ordering
-        void renumberMapPoints(const labelMap& map) const;
+        void renumberMapPoints
+        (
+            const label nOldPoints,
+            const labelList& rmap,
+            const labelMap& map
+        ) const;
 
         //- Set cell / patch offset information
         void setOffsets

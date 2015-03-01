@@ -371,8 +371,8 @@ void topoPointPatchMapper::calcAddressing() const
             << " Found " << nUnmappedPoints << " points which are"
             << " not mapped from any parent points." << nl
             << " Patch: " << patch_.name() << nl
-            << " List: " << nl
-            << unmappedPoints
+            << " List: " << unmappedPoints << nl
+            << " Local patch points: " << patch_.patch().localPoints()
             << abort(FatalError);
     }
 }

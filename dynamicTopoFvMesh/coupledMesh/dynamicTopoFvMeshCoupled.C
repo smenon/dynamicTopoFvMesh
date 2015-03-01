@@ -2392,6 +2392,9 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         {
             if (pItI() != -1)
             {
+                // Create a mapping pair
+                const mapPointPair pair(0.0, labelPair(pI, pItI.key()));
+                setPointMapping(pItI(), pair);
                 continue;
             }
 

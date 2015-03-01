@@ -359,13 +359,25 @@ void topoMapper::setSubMeshPatchMaps
 
 
 //- Renumber map points after re-ordering
-void topoMapper::renumberMapPoints(const labelMap& map) const
+void topoMapper::renumberMapPoints
+(
+    const label nOldPoints,
+    const labelList& rmap,
+    const labelMap& map
+) const
 {
     forAll(subMeshMapPointList_, mpI)
     {
         MapPoint& mp = subMeshMapPointList_[mpI];
 
-        mp.first() = map[mp.first()];
+        if (mp.first() < nOldPoints)
+        {
+            mp.first() = rmap[mp.first()];
+        }
+        else
+        {
+            mp.first() = map[mp.first()];
+        }
     }
 }
 
