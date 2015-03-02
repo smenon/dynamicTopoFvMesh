@@ -140,8 +140,8 @@ void cellSetAlgorithm::computeNormFactor(const label index) const
     vector maxToXb = (box_.max() - box_.midpoint());
 
     // Scale it by a bit
-    box_.min() += (1.5 * minToXb);
-    box_.max() += (1.5 * maxToXb);
+    box_.min() += (2.0 * minToXb);
+    box_.max() += (2.0 * maxToXb);
 }
 
 
