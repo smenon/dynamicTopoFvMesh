@@ -363,7 +363,8 @@ void topoMapper::renumberMapPoints
 (
     const label nOldPoints,
     const labelList& rmap,
-    const labelMap& map
+    const labelMap& map,
+    labelList& pointMap
 ) const
 {
     forAll(subMeshMapPointList_, mpI)
@@ -378,6 +379,9 @@ void topoMapper::renumberMapPoints
         {
             mp.first() = map[mp.first()];
         }
+
+        // Ensure that point is not mapping from anything
+        pointMap[mp.first()] = -1;
     }
 }
 

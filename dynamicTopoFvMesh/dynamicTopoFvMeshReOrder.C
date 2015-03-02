@@ -142,7 +142,8 @@ void dynamicTopoFvMesh::reOrderPoints
     (
         nOldPoints_,
         reversePointMap_,
-        addedPointRenumbering_
+        addedPointRenumbering_,
+        pointMap_
     );
 
     // Prepare the pointZoneMap

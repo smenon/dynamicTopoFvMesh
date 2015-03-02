@@ -295,7 +295,8 @@ public:
         (
             const label nOldPoints,
             const labelList& rmap,
-            const labelMap& map
+            const labelMap& map,
+            labelList& pointMap
         ) const;
 
         //- Set cell / patch offset information
