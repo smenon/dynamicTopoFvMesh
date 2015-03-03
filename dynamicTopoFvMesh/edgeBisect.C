@@ -634,10 +634,15 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     otherEdgePoint[1] = commonEdges[1].otherVertex(nextToOtherPoint[1]);
 
     FixedList<label, 2> mP;
+    FixedList<bool, 2> midBoundary;
 
     // Fetch points
     mP[0] = commonEdges[0][0];
     mP[1] = commonEdges[0][1];
+
+    // Mark new point as boundary
+    // only if both points are on the boundary
+    midBoundary[0] = (boundaryPoints_[mP[0]] && boundaryPoints_[mP[1]]);
 
     const point& n00Point = points_[mP[0]];
     const point& n01Point = points_[mP[1]];
@@ -646,6 +651,10 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
 
     mP[0] = commonEdges[1][0];
     mP[1] = commonEdges[1][1];
+
+    // Mark new point as boundary
+    // only if both points are on the boundary
+    midBoundary[1] = (boundaryPoints_[mP[0]] && boundaryPoints_[mP[1]]);
 
     const point& n10Point = points_[mP[0]];
     const point& n11Point = points_[mP[1]];
@@ -689,6 +698,16 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
     // Add two new points to the end of the list
     newPointIndex[0] = insertPoint(nMidPoint[0], oMidPoint[0], pair[0]);
     newPointIndex[1] = insertPoint(nMidPoint[1], oMidPoint[1], pair[1]);
+
+    if (midBoundary[0])
+    {
+        boundaryPoints_[newPointIndex[0]] = 1;
+    }
+
+    if (midBoundary[1])
+    {
+        boundaryPoints_[newPointIndex[1]] = 1;
+    }
 
     // Add the points to the map. Since this might require master mapping,
     // first check to see if a slave is being bisected.
@@ -2895,6 +2914,13 @@ const changeMap dynamicTopoFvMesh::bisectEdge
     // Add a new point to the end of the list
     label newPointIndex = insertPoint(nMidPoint, oMidPoint, pair);
 
+    // Mark new point as boundary
+    // only if both points are on the boundary
+    if (boundaryPoints_[mP[0]] && boundaryPoints_[mP[1]])
+    {
+        boundaryPoints_[newPointIndex] = 1;
+    }
+
     // Add this point to the map.
     map.addPoint(newPointIndex);
 
@@ -4930,6 +4956,13 @@ const changeMap dynamicTopoFvMesh::addCellLayer
 
             // Add a new point to the end of the list
             label newPointIndex = insertPoint(nMidPoint, oPoint, pair);
+
+            // Mark new point as boundary
+            // only if both points are on the boundary
+            if (boundaryPoints_[mP[0]] && boundaryPoints_[mP[1]])
+            {
+                boundaryPoints_[newPointIndex] = 1;
+            }
 
             // Update maps
             map.addPoint(newPointIndex, labelList(1, pIndex));

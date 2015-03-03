@@ -2387,18 +2387,17 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const coupleMap& cMapI = recvMeshes_[pI].map();
         const labelList& piZ = cMapI.entityBuffer(pzEnum);
         const dynamicTopoFvMesh& meshI = recvMeshes_[pI].subMesh();
+        const labelList& bPointsI = meshI.boundaryPoints();
 
         forAllIter(Map<label>, procPointMapI, pItI)
         {
             if (pItI() != -1)
             {
-                // Create a mapping pair
-                const mapPointPair pair(0.0, labelPair(pI, pItI.key()));
-                setPointMapping(pItI(), pair);
                 continue;
             }
 
             const point& pointI = meshI.points_[pItI.key()];
+            const label bPointI = bPointsI[pItI.key()];
 
             bool foundMerge = false;
 
@@ -2415,11 +2414,13 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 const coupleMap& cMapJ = recvMeshes_[pJ].map();
                 const labelList& pjZ = cMapJ.entityBuffer(pzEnum);
                 const dynamicTopoFvMesh& meshJ = recvMeshes_[pJ].subMesh();
+                const labelList& bPointsJ = meshJ.boundaryPoints();
 
                 // Compare points with this processor
                 forAllIter(Map<label>, procPointMapJ, pItJ)
                 {
                     const point& pointJ = meshJ.points_[pItJ.key()];
+                    const label bPointJ = bPointsJ[pItJ.key()];
 
                     if (magSqr(pointI - pointJ) < mergeTol)
                     {
@@ -2442,6 +2443,12 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
                             pItI() = mergePointIndex;
                             pItJ() = mergePointIndex;
+
+                            // Set boundary point mark, if necessary
+                            if (bPointI || bPointJ)
+                            {
+                                boundaryPoints_[mergePointIndex] = 1;
+                            }
 
                             // Update maps for the new point
                             cMapI.mapSlave
@@ -2540,6 +2547,12 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // Set the entry
             pItI() = newPointIndex;
+
+            // Set boundary point mark, if necessary
+            if (bPointI)
+            {
+                boundaryPoints_[newPointIndex] = 1;
+            }
 
             // Update maps for the new point
             cMapI.mapSlave(coupleMap::POINT, pItI(), pItI.key());
@@ -8002,6 +8015,32 @@ void dynamicTopoFvMesh::buildProcessorCoupledMaps()
                     }
                 }
             }
+        }
+    }
+
+    // Build boundary points on subMeshes, and sync values
+    forAll(procIndices_, pI)
+    {
+        coupledMesh& recvMesh = recvMeshes_[pI];
+
+        // Mark boundary points on the subMesh
+        recvMesh.subMesh().initBoundaryPoints();
+
+        const Map<label>& pMap = recvMesh.map().entityMap(coupleMap::POINT);
+
+        // Sync values for boundary points
+        labelList& mBoundaryPoints = boundaryPoints();
+        labelList& sBoundaryPoints = recvMesh.subMesh().boundaryPoints();
+
+        forAllConstIter(Map<label>, pMap, pIter)
+        {
+            label& sBoundary = sBoundaryPoints[pIter()];
+            label& mBoundary = mBoundaryPoints[pIter.key()];
+
+            const label mergeMark = (sBoundary || mBoundary);
+
+            sBoundary = mergeMark;
+            mBoundary = mergeMark;
         }
     }
 }

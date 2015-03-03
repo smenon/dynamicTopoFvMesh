@@ -80,6 +80,20 @@ inline bool dynamicTopoFvMesh::isTriPrismFace(const label index) const
 }
 
 
+// Return a non-const reference to the boundaryPoints
+inline labelList& dynamicTopoFvMesh::boundaryPoints()
+{
+    return boundaryPoints_;
+}
+
+
+// Return a const reference to the boundaryPoints
+inline const labelList& dynamicTopoFvMesh::boundaryPoints() const
+{
+    return boundaryPoints_;
+}
+
+
 // Return a non-const reference to the lengthScaleEstimator
 inline lengthScaleEstimator&
 dynamicTopoFvMesh::lengthEstimator()

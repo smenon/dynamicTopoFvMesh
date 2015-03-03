@@ -182,6 +182,7 @@ class dynamicTopoFvMesh
         resizable<labelList>::ListType pointEdges_;
         resizable<labelList>::ListType edgeFaces_, faceEdges_;
         resizable<scalar>::ListType lengthScale_;
+        resizable<label>::ListType boundaryPoints_;
 
         //- Size information
         labelList oldPatchSizes_, patchSizes_;
@@ -376,6 +377,9 @@ class dynamicTopoFvMesh
         // Initialize mesh edges and related connectivity lists
         void initEdges();
 
+        // Mark boundary points
+        void initBoundaryPoints();
+
         // Load the mesh-quality metric from the library
         void loadMetric();
 
@@ -399,6 +403,12 @@ class dynamicTopoFvMesh
 
         // Return if the face is surrounded by triangle prisms
         inline bool isTriPrismFace(const label index) const;
+
+        // Return a non-const reference to the boundaryPoints
+        inline labelList& boundaryPoints();
+
+        // Return a const reference to the boundaryPoints
+        inline const labelList& boundaryPoints() const;
 
         // Return a non-const reference to the lengthScaleEstimator
         inline lengthScaleEstimator& lengthEstimator();

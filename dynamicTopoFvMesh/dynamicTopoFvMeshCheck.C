@@ -247,6 +247,14 @@ dynamicTopoFvMesh::checkEdgeBoundary
     {
         const label pIndex = edgeToCheck[pointI];
 
+        // Check if the point touches a physical boundary
+        edgeBoundary[pointI] = boundaryPoints_[pIndex];
+
+        if (edgeBoundary[pointI])
+        {
+            continue;
+        }
+
         // Check if this point was added to a zone
         label addedZone = -1;
 

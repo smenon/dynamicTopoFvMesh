@@ -955,6 +955,7 @@ label dynamicTopoFvMesh::insertPoint
 
     points_.append(newPoint);
     oldPoints_.append(oldPoint);
+    boundaryPoints_.append(0);
 
     if (debug > 2)
     {
@@ -1996,6 +1997,42 @@ void dynamicTopoFvMesh::initEdges()
 
     // Read coupled patch information from dictionary.
     readCoupledPatches();
+}
+
+
+// Mark boundary points
+void dynamicTopoFvMesh::initBoundaryPoints()
+{
+    // Allocate boundary points
+    boundaryPoints_.setSize(nPoints_);
+
+    // Clear existing marks
+    forAll(boundaryPoints_, pointI)
+    {
+        boundaryPoints_[pointI] = 0;
+    }
+
+    const polyBoundaryMesh& boundary = boundaryMesh();
+
+    // Mark points on all physical (non-empty / non-processor) patches
+    forAll(boundary, patchI)
+    {
+        const polyPatch& patch = boundary[patchI];
+
+        if (isA<emptyPolyPatch>(patch) || isA<processorPolyPatch>(patch))
+        {
+            continue;
+        }
+
+        const labelList& meshPoints = patch.meshPoints();
+
+        forAll(meshPoints, pointI)
+        {
+            const label meshPoint = meshPoints[pointI];
+
+            boundaryPoints_[meshPoint] = 1;
+        }
+    }
 }
 
 
@@ -3936,6 +3973,9 @@ void dynamicTopoFvMesh::threadedTopoModifier()
     reverseEdgeMap_.setSize(nEdges_, -7);
     reverseFaceMap_.setSize(nFaces_, -7);
     reverseCellMap_.setSize(nCells_, -7);
+
+    // Mark boundary points
+    initBoundaryPoints();
 
     // Remove sliver cells first.
     removeSlivers();
