@@ -904,7 +904,7 @@ void dynamicTopoFvMesh::reOrderFaces
 
                 if (neighbourRenumber < ownerRenumber)
                 {
-                    faceRenumber = faceRenumber.reverseFace();
+                    faceRenumber.flip();
 
                     if (!bandWidthReduction_)
                     {

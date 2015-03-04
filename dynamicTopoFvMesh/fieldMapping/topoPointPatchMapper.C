@@ -87,7 +87,7 @@ void topoPointPatchMapper::calcInsertedAddressing() const
     // and pick inserted points on the same patch.
     const List<objectMap>& pfp = mpm_.pointsFromPointsMap();
 
-    Map<label>::const_iterator poIter, pnIter;
+    Map<label>::const_iterator poIter, pnIter, ppIter;
 
     forAll(pfp, pfpI)
     {
@@ -223,9 +223,19 @@ void topoPointPatchMapper::calcInsertedAddressing() const
             continue;
         }
 
-        // Compute offset into patch
+        // This point may not belong to any patch faces on the subMesh,
+        // so check for its existence first
         const label mapPoint = pair.second();
-        const label localPoint = patchMap[mapPoint];
+
+        ppIter = patchMap.find(mapPoint);
+
+        if (ppIter == patchMap.end())
+        {
+            continue;
+        }
+
+        // Compute offset into patch
+        const label localPoint = ppIter();
         const label mapIndex = (patchStarts[patch_.index()] + localPoint);
 
         // Assign addressing with offset
@@ -367,12 +377,16 @@ void topoPointPatchMapper::calcAddressing() const
 
     if (nUnmappedPoints)
     {
+        const pointField& lP = patch_.patch().localPoints();
+
+        UIndirectList<point> uP(lP, unmappedPoints);
+
         FatalErrorIn("void topoPointPatchMapper::calcAddressing() const")
             << " Found " << nUnmappedPoints << " points which are"
             << " not mapped from any parent points." << nl
             << " Patch: " << patch_.name() << nl
             << " List: " << unmappedPoints << nl
-            << " Local patch points: " << patch_.patch().localPoints()
+            << " Points: " << uP
             << abort(FatalError);
     }
 }

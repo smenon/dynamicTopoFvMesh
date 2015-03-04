@@ -2535,11 +2535,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             )
             {
                 // This face is to be flipped
-                faces_[faceToKeep[0]] =
-                (
-                    faces_[faceToKeep[0]].reverseFace()
-                );
-
+                faces_[faceToKeep[0]].flip();
                 owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                 neighbour_[faceToKeep[0]] = neighbour_[faceToThrow[0]];
 
@@ -2557,11 +2553,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     // This face will need to be flipped and converted
                     // to a boundary face. Flip it now, so that conversion
                     // happens later.
-                    faces_[faceToKeep[0]] =
-                    (
-                        faces_[faceToKeep[0]].reverseFace()
-                    );
-
+                    faces_[faceToKeep[0]].flip();
                     owner_[faceToKeep[0]] = neighbour_[faceToKeep[0]];
                     neighbour_[faceToKeep[0]] = -1;
 
@@ -2584,11 +2576,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             if (owner_[faceToThrow[0]] < owner_[faceToKeep[0]])
             {
                 // This face is to be flipped
-                faces_[faceToKeep[0]] =
-                (
-                    faces_[faceToKeep[0]].reverseFace()
-                );
-
+                faces_[faceToKeep[0]].flip();
                 neighbour_[faceToKeep[0]] = owner_[faceToKeep[0]];
                 owner_[faceToKeep[0]] = owner_[faceToThrow[0]];
 
@@ -2622,11 +2610,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 )
                 {
                     // This face is to be flipped
-                    faces_[faceToKeep[1]] =
-                    (
-                        faces_[faceToKeep[1]].reverseFace()
-                    );
-
+                    faces_[faceToKeep[1]].flip();
                     owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                     neighbour_[faceToKeep[1]] = neighbour_[faceToThrow[1]];
 
@@ -2644,11 +2628,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         // This face will need to be flipped and converted
                         // to a boundary face. Flip it now, so that conversion
                         // happens later.
-                        faces_[faceToKeep[1]] =
-                        (
-                            faces_[faceToKeep[1]].reverseFace()
-                        );
-
+                        faces_[faceToKeep[1]].flip();
                         owner_[faceToKeep[1]] = neighbour_[faceToKeep[1]];
                         neighbour_[faceToKeep[1]] = -1;
 
@@ -2671,11 +2651,7 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                 if (owner_[faceToThrow[1]] < owner_[faceToKeep[1]])
                 {
                     // This face is to be flipped
-                    faces_[faceToKeep[1]] =
-                    (
-                        faces_[faceToKeep[1]].reverseFace()
-                    );
-
+                    faces_[faceToKeep[1]].flip();
                     neighbour_[faceToKeep[1]] = owner_[faceToKeep[1]];
                     owner_[faceToKeep[1]] = owner_[faceToThrow[1]];
 
@@ -5448,7 +5424,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 )
                 {
                     // This face is to be flipped
-                    faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                    faces_[replaceFace].flip();
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = neighbour_[faceToRemove];
 
@@ -5842,7 +5818,7 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                 if (owner_[faceToRemove] < owner_[replaceFace])
                 {
                     // This face is to be flipped
-                    faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                    faces_[replaceFace].flip();
                     neighbour_[replaceFace] = owner_[replaceFace];
                     owner_[replaceFace] = owner_[faceToRemove];
 

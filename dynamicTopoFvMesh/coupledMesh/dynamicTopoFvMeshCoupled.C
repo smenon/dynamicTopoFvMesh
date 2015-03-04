@@ -2813,6 +2813,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
         const dynamicTopoFvMesh& meshI = recvMeshes_[pI].subMesh();
 
         Map<label>& procFaceMap = facesToInsert[pI];
+        Map<label>& procPointMap = pointsToInsert[pI];
 
         forAllIter(Map<label>, procFaceMap, fI)
         {
@@ -3017,7 +3018,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
             if (mFaceOwn == -1 && mFaceNei != -1)
             {
                 // Boundary face is inverted. Flip it
-                nF = nF.reverseFace();
+                nF.flip();
                 nOwner = mFaceNei;
                 nNeighbour = -1;
 
@@ -3030,7 +3031,7 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
                 // Interior face. Check if a flip is necessary.
                 if (mFaceNei < mFaceOwn)
                 {
-                    nF = nF.reverseFace();
+                    nF.flip();
                     nOwner = mFaceNei;
                     nNeighbour = mFaceOwn;
                 }
@@ -3096,6 +3097,26 @@ const changeMap dynamicTopoFvMesh::insertCells(const label mIndex)
 
             // Set the mapping for this face
             setFaceMapping(fI());
+
+            // If this is a physical patch, map all points on it
+            if (nPatch > -1 && getNeighbourProcessor(nPatch) == -1)
+            {
+                forAll(sFaceI, pointI)
+                {
+                    const label sPoint = sFaceI[pointI];
+
+                    // Only consider points that existed
+                    // in the previous time step
+                    if (sPoint < meshI.nOldPoints_)
+                    {
+                        // Create a mapping pair
+                        const label mPoint = procPointMap[sPoint];
+                        const mapPointPair pair(0.0, labelPair(pI, sPoint));
+
+                        setPointMapping(mPoint, pair);
+                    }
+                }
+            }
 
             // Update cells
             cells_[nOwner][nCellFaces[nOwner]++] = fI();

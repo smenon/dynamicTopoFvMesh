@@ -921,7 +921,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
         else
         {
             // This face has to be reversed
-            faces_[replaceFace] = faces_[replaceFace].reverseFace();
+            faces_[replaceFace].flip();
             owner_[replaceFace] = neighbour_[replaceFace];
             neighbour_[replaceFace] = newCellIndex[0];
 
@@ -1408,7 +1408,7 @@ const changeMap dynamicTopoFvMesh::bisectQuadFace
             else
             {
                 // This face has to be reversed
-                faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                faces_[replaceFace].flip();
                 owner_[replaceFace] = neighbour_[replaceFace];
                 neighbour_[replaceFace] = newCellIndex[1];
 
@@ -3043,7 +3043,7 @@ const changeMap dynamicTopoFvMesh::bisectEdge
                 else
                 {
                     // This face has to be reversed
-                    faces_[replaceFace] = faces_[replaceFace].reverseFace();
+                    faces_[replaceFace].flip();
                     owner_[replaceFace] = neighbour_[replaceFace];
                     neighbour_[replaceFace] = addedCellIndices[indexI];
 
@@ -5167,7 +5167,7 @@ const changeMap dynamicTopoFvMesh::addCellLayer
             if ((newNeighbour < newOwner) && (newNeighbour > -1))
             {
                 // Flip face
-                newVFace = newVFace.reverseFace();
+                newVFace.flip();
 
                 // Swap addressing
                 Foam::Swap(newOwner, newNeighbour);

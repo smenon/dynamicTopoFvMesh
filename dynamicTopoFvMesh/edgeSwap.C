@@ -2618,7 +2618,7 @@ const changeMap dynamicTopoFvMesh::swap23
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
+                        faces_[faceIndex].flip();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
 
@@ -2697,7 +2697,7 @@ const changeMap dynamicTopoFvMesh::swap23
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
+                        faces_[faceIndex].flip();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
 
@@ -2760,7 +2760,7 @@ const changeMap dynamicTopoFvMesh::swap23
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
+                        faces_[faceIndex].flip();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[2];
 
@@ -3309,7 +3309,7 @@ const changeMap dynamicTopoFvMesh::swap32
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
+                        faces_[faceIndex].flip();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[1];
 
@@ -3365,7 +3365,7 @@ const changeMap dynamicTopoFvMesh::swap32
                     else
                     {
                         // Flip this face
-                        faces_[faceIndex] = faces_[faceIndex].reverseFace();
+                        faces_[faceIndex].flip();
                         owner_[faceIndex] = neighbour_[faceIndex];
                         neighbour_[faceIndex] = newCellIndex[0];
 
