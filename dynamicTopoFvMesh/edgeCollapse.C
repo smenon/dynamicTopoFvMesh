@@ -1234,6 +1234,23 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
             nBoundCurves[1] = true;
         }
 
+        FixedList<bool, 4> epBoundary(false);
+
+        epBoundary[0] = (boundaryPoints_[cv0] != 0);
+        epBoundary[1] = (boundaryPoints_[cv1] != 0);
+        epBoundary[2] = (boundaryPoints_[cv2] != 0);
+        epBoundary[3] = (boundaryPoints_[cv3] != 0);
+
+        if (epBoundary[0] && epBoundary[1])
+        {
+            nBoundCurves[0] = true;
+        }
+
+        if (epBoundary[2] && epBoundary[3])
+        {
+            nBoundCurves[1] = true;
+        }
+
         // Collapse towards a bounding curve
         if (nBoundCurves[0] && !nBoundCurves[1])
         {
