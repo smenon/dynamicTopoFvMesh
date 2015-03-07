@@ -3784,6 +3784,9 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     map.removeFace(mfIndex);
                     map.addFace(newFaceIndex, labelList(1, mfIndex));
 
+                    // Set mapping for the new face
+                    setFaceMapping(newFaceIndex);
+
                     continue;
                 }
                 else
@@ -6836,6 +6839,9 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         // Update map
                         map.removeFace(mfIndex);
                         map.addFace(newFaceIndex, labelList(1, mfIndex));
+
+                        // Set mapping for the new face
+                        setFaceMapping(newFaceIndex);
 
                         // Replace index and patch
                         mfIndex = newFaceIndex;
