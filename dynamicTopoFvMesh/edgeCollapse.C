@@ -6508,151 +6508,6 @@ const changeMap dynamicTopoFvMesh::collapseEdge
         else
         if (procCouple && !localCouple)
         {
-            // Update point mapping
-            forAll(procIndices_, pI)
-            {
-                const coupleMap& cMap = recvMeshes_[pI].map();
-
-                // Obtain references
-                Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
-                Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
-
-                const changeMap* slaveMapPtr = NULL;
-                const label pointEnum = coupleMap::POINT;
-
-                forAll(slaveMaps, slaveI)
-                {
-                    const changeMap& slaveMap = slaveMaps[slaveI];
-
-                    if (slaveMap.patchIndex() == pI)
-                    {
-                        if (slaveMap.index() < 0)
-                        {
-                            // Point-coupling
-                            label sI = -1;
-
-                            if (collapsingSlave)
-                            {
-                                sI = cMap.findMaster(pointEnum, collapsePoint);
-
-                                if (sI > -1)
-                                {
-                                    if (rPointMap.found(replacePoint))
-                                    {
-                                        rPointMap[replacePoint] = sI;
-                                    }
-                                    else
-                                    {
-                                        rPointMap.insert(replacePoint, sI);
-                                    }
-
-                                    pointMap[sI] = replacePoint;
-                                }
-                            }
-                            else
-                            {
-                                sI = cMap.findSlave(pointEnum, collapsePoint);
-
-                                if (sI > -1)
-                                {
-                                    if (pointMap.found(replacePoint))
-                                    {
-                                        pointMap[replacePoint] = sI;
-                                    }
-                                    else
-                                    {
-                                        pointMap.insert(replacePoint, sI);
-                                    }
-
-                                    rPointMap[sI] = replacePoint;
-                                }
-                            }
-
-                            if (sI > -1 && debug > 2)
-                            {
-                                Pout<< " Found point: " << collapsePoint
-                                    << " on proc: " << procIndices_[pI]
-                                    << endl;
-                            }
-                        }
-                        else
-                        {
-                            // Edge-coupling. Fetch address for later.
-                            slaveMapPtr = &slaveMap;
-                            break;
-                        }
-                    }
-                }
-
-                if (slaveMapPtr)
-                {
-                    // Alias for convenience...
-                    const changeMap& slaveMap = *slaveMapPtr;
-
-                    const labelList& rpList = slaveMap.removedPointList();
-                    const List<objectMap>& apList = slaveMap.addedPointList();
-
-                    // Configure the slave replacement point.
-                    //  - collapseEdge stores this as an 'addedPoint'
-                    label scPoint = rpList[0];
-                    label srPoint = apList[0].index();
-
-                    if (collapsingSlave)
-                    {
-                        if (rPointMap[replacePoint] == scPoint)
-                        {
-                            pointMap[srPoint] = replacePoint;
-                            rPointMap[replacePoint] = srPoint;
-                        }
-
-                        pointMap.erase(rPointMap[collapsePoint]);
-                        rPointMap.erase(collapsePoint);
-                    }
-                    else
-                    {
-                        if (pointMap[replacePoint] == scPoint)
-                        {
-                            rPointMap[srPoint] = replacePoint;
-                            pointMap[replacePoint] = srPoint;
-                        }
-
-                        rPointMap.erase(pointMap[collapsePoint]);
-                        pointMap.erase(collapsePoint);
-                    }
-
-                    // If any other points were removed, update map
-                    for (label pointI = 1; pointI < rpList.size(); pointI++)
-                    {
-                        if (collapsingSlave)
-                        {
-                            if (pointMap.found(rpList[pointI]))
-                            {
-                                rPointMap.erase(pointMap[rpList[pointI]]);
-                                pointMap.erase(rpList[pointI]);
-                            }
-                        }
-                        else
-                        {
-                            if (rPointMap.found(rpList[pointI]))
-                            {
-                                if (debug > 2)
-                                {
-                                    Pout<< " Found removed point: "
-                                        << rpList[pointI]
-                                        << " on proc: " << procIndices_[pI]
-                                        << " for point on this proc: "
-                                        << rPointMap[rpList[pointI]]
-                                        << endl;
-                                }
-
-                                pointMap.erase(rPointMap[rpList[pointI]]);
-                                rPointMap.erase(rpList[pointI]);
-                            }
-                        }
-                    }
-                }
-            }
-
             // Update face mapping
             forAll(procIndices_, pI)
             {
@@ -6858,6 +6713,19 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                         // skip the remaining face mapping steps
                         if (getNeighbourProcessor(newPatch) == -1)
                         {
+                            // Since this is a physical patch,
+                            // map all points on this face
+                            forAll(newFace, pointI)
+                            {
+                                const label mPoint = newFace[pointI];
+                                const label sPoint = pointMap[mPoint];
+
+                                const labelPair smPair(pI, sPoint);
+                                const mapPointPair pair(0.0, smPair);
+
+                                setPointMapping(mPoint, pair);
+                            }
+
                             continue;
                         }
 
@@ -7215,6 +7083,151 @@ const changeMap dynamicTopoFvMesh::collapseEdge
                             << " using comparison edge: " << cE
                             << " on proc: " << procIndices_[pI]
                             << endl;
+                    }
+                }
+            }
+
+            // Update point mapping
+            forAll(procIndices_, pI)
+            {
+                const coupleMap& cMap = recvMeshes_[pI].map();
+
+                // Obtain references
+                Map<label>& pointMap = cMap.entityMap(coupleMap::POINT);
+                Map<label>& rPointMap = cMap.reverseEntityMap(coupleMap::POINT);
+
+                const changeMap* slaveMapPtr = NULL;
+                const label pointEnum = coupleMap::POINT;
+
+                forAll(slaveMaps, slaveI)
+                {
+                    const changeMap& slaveMap = slaveMaps[slaveI];
+
+                    if (slaveMap.patchIndex() == pI)
+                    {
+                        if (slaveMap.index() < 0)
+                        {
+                            // Point-coupling
+                            label sI = -1;
+
+                            if (collapsingSlave)
+                            {
+                                sI = cMap.findMaster(pointEnum, collapsePoint);
+
+                                if (sI > -1)
+                                {
+                                    if (rPointMap.found(replacePoint))
+                                    {
+                                        rPointMap[replacePoint] = sI;
+                                    }
+                                    else
+                                    {
+                                        rPointMap.insert(replacePoint, sI);
+                                    }
+
+                                    pointMap[sI] = replacePoint;
+                                }
+                            }
+                            else
+                            {
+                                sI = cMap.findSlave(pointEnum, collapsePoint);
+
+                                if (sI > -1)
+                                {
+                                    if (pointMap.found(replacePoint))
+                                    {
+                                        pointMap[replacePoint] = sI;
+                                    }
+                                    else
+                                    {
+                                        pointMap.insert(replacePoint, sI);
+                                    }
+
+                                    rPointMap[sI] = replacePoint;
+                                }
+                            }
+
+                            if (sI > -1 && debug > 2)
+                            {
+                                Pout<< " Found point: " << collapsePoint
+                                    << " on proc: " << procIndices_[pI]
+                                    << endl;
+                            }
+                        }
+                        else
+                        {
+                            // Edge-coupling. Fetch address for later.
+                            slaveMapPtr = &slaveMap;
+                            break;
+                        }
+                    }
+                }
+
+                if (slaveMapPtr)
+                {
+                    // Alias for convenience...
+                    const changeMap& slaveMap = *slaveMapPtr;
+
+                    const labelList& rpList = slaveMap.removedPointList();
+                    const List<objectMap>& apList = slaveMap.addedPointList();
+
+                    // Configure the slave replacement point.
+                    //  - collapseEdge stores this as an 'addedPoint'
+                    label scPoint = rpList[0];
+                    label srPoint = apList[0].index();
+
+                    if (collapsingSlave)
+                    {
+                        if (rPointMap[replacePoint] == scPoint)
+                        {
+                            pointMap[srPoint] = replacePoint;
+                            rPointMap[replacePoint] = srPoint;
+                        }
+
+                        pointMap.erase(rPointMap[collapsePoint]);
+                        rPointMap.erase(collapsePoint);
+                    }
+                    else
+                    {
+                        if (pointMap[replacePoint] == scPoint)
+                        {
+                            rPointMap[srPoint] = replacePoint;
+                            pointMap[replacePoint] = srPoint;
+                        }
+
+                        rPointMap.erase(pointMap[collapsePoint]);
+                        pointMap.erase(collapsePoint);
+                    }
+
+                    // If any other points were removed, update map
+                    for (label pointI = 1; pointI < rpList.size(); pointI++)
+                    {
+                        if (collapsingSlave)
+                        {
+                            if (pointMap.found(rpList[pointI]))
+                            {
+                                rPointMap.erase(pointMap[rpList[pointI]]);
+                                pointMap.erase(rpList[pointI]);
+                            }
+                        }
+                        else
+                        {
+                            if (rPointMap.found(rpList[pointI]))
+                            {
+                                if (debug > 2)
+                                {
+                                    Pout<< " Found removed point: "
+                                        << rpList[pointI]
+                                        << " on proc: " << procIndices_[pI]
+                                        << " for point on this proc: "
+                                        << rPointMap[rpList[pointI]]
+                                        << endl;
+                                }
+
+                                pointMap.erase(rPointMap[rpList[pointI]]);
+                                rPointMap.erase(rpList[pointI]);
+                            }
+                        }
                     }
                 }
             }
