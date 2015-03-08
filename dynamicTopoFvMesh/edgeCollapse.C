@@ -3365,137 +3365,14 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
 
             // Alias for convenience
             const coupleMap& cMap = *cMapPtr;
-
-            // Remove the point entries.
+            const label faceEnum = coupleMap::FACE;
             const label pointEnum = coupleMap::POINT;
 
             // Obtain references
-            Map<label>& pointMap = cMap.entityMap(pointEnum);
-            Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
-
-            if (collapsingSlave)
-            {
-                if (rPointMap[replacement[0]] == scP0)
-                {
-                    pointMap[srP0] = replacement[0];
-                    rPointMap[replacement[0]] = srP0;
-                }
-                else
-                if (rPointMap[replacement[0]] == scP1)
-                {
-                    pointMap[srP1] = replacement[0];
-                    rPointMap[replacement[0]] = srP1;
-                }
-
-                if (rPointMap[original[0]] == scP0)
-                {
-                    pointMap.erase(scP0);
-                }
-                else
-                if (rPointMap[original[0]] == scP1)
-                {
-                    pointMap.erase(scP1);
-                }
-
-                rPointMap.erase(original[0]);
-            }
-            else
-            {
-                if (pointMap[replacement[0]] == scP0)
-                {
-                    rPointMap[srP0] = replacement[0];
-                    pointMap[replacement[0]] = srP0;
-                }
-                else
-                if (pointMap[replacement[0]] == scP1)
-                {
-                    rPointMap[srP1] = replacement[0];
-                    pointMap[replacement[0]] = srP1;
-                }
-
-                if (pointMap[original[0]] == scP0)
-                {
-                    rPointMap.erase(scP0);
-                }
-                else
-                if (pointMap[original[0]] == scP1)
-                {
-                    rPointMap.erase(scP1);
-                }
-
-                pointMap.erase(original[0]);
-            }
-
-            if (collapsingSlave)
-            {
-                if (rPointMap[replacement[1]] == scP0)
-                {
-                    pointMap[srP0] = replacement[1];
-                    rPointMap[replacement[1]] = srP0;
-                }
-                else
-                if (rPointMap[replacement[1]] == scP1)
-                {
-                    pointMap[srP1] = replacement[1];
-                    rPointMap[replacement[1]] = srP1;
-                }
-
-                if (rPointMap[original[1]] == scP0)
-                {
-                    pointMap.erase(scP0);
-                }
-                else
-                if (rPointMap[original[1]] == scP1)
-                {
-                    pointMap.erase(scP1);
-                }
-
-                rPointMap.erase(original[1]);
-            }
-            else
-            {
-                if (pointMap[replacement[1]] == scP0)
-                {
-                    rPointMap[srP0] = replacement[1];
-                    pointMap[replacement[1]] = srP0;
-                }
-                else
-                if (pointMap[replacement[1]] == scP1)
-                {
-                    rPointMap[srP1] = replacement[1];
-                    pointMap[replacement[1]] = srP1;
-                }
-
-                if (pointMap[original[1]] == scP0)
-                {
-                    rPointMap.erase(scP0);
-                }
-                else
-                if (pointMap[original[1]] == scP1)
-                {
-                    rPointMap.erase(scP1);
-                }
-
-                pointMap.erase(original[1]);
-            }
-
-            // Remove the face entries
-            const label faceEnum = coupleMap::FACE;
-
-            // Obtain references
             Map<label>& faceMap = cMap.entityMap(faceEnum);
+            Map<label>& pointMap = cMap.entityMap(pointEnum);
             Map<label>& rFaceMap = cMap.reverseEntityMap(faceEnum);
-
-            if (collapsingSlave)
-            {
-                faceMap.erase(faceMap[fIndex]);
-                rFaceMap.erase(fIndex);
-            }
-            else
-            {
-                rFaceMap.erase(faceMap[fIndex]);
-                faceMap.erase(fIndex);
-            }
+            Map<label>& rPointMap = cMap.reverseEntityMap(pointEnum);
 
             // Configure a comparison face
             face cFace(4);
@@ -3787,6 +3664,17 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                     // Set mapping for the new face
                     setFaceMapping(newFaceIndex);
 
+                    // Since this is a physical patch,
+                    // map all points on this face
+                    forAll(newFace, pointI)
+                    {
+                        const label mPoint = newFace[pointI];
+                        const label sPoint = pointMap[mPoint];
+                        const mapPointPair pair(0.0, labelPair(pI, sPoint));
+
+                        setPointMapping(mPoint, pair);
+                    }
+
                     continue;
                 }
                 else
@@ -3891,6 +3779,125 @@ const changeMap dynamicTopoFvMesh::collapseQuadFace
                         << " cFace: " << cFace << nl
                         << abort(FatalError);
                 }
+            }
+
+            // Remove the point entries
+            if (collapsingSlave)
+            {
+                if (rPointMap[replacement[0]] == scP0)
+                {
+                    pointMap[srP0] = replacement[0];
+                    rPointMap[replacement[0]] = srP0;
+                }
+                else
+                if (rPointMap[replacement[0]] == scP1)
+                {
+                    pointMap[srP1] = replacement[0];
+                    rPointMap[replacement[0]] = srP1;
+                }
+
+                if (rPointMap[original[0]] == scP0)
+                {
+                    pointMap.erase(scP0);
+                }
+                else
+                if (rPointMap[original[0]] == scP1)
+                {
+                    pointMap.erase(scP1);
+                }
+
+                rPointMap.erase(original[0]);
+            }
+            else
+            {
+                if (pointMap[replacement[0]] == scP0)
+                {
+                    rPointMap[srP0] = replacement[0];
+                    pointMap[replacement[0]] = srP0;
+                }
+                else
+                if (pointMap[replacement[0]] == scP1)
+                {
+                    rPointMap[srP1] = replacement[0];
+                    pointMap[replacement[0]] = srP1;
+                }
+
+                if (pointMap[original[0]] == scP0)
+                {
+                    rPointMap.erase(scP0);
+                }
+                else
+                if (pointMap[original[0]] == scP1)
+                {
+                    rPointMap.erase(scP1);
+                }
+
+                pointMap.erase(original[0]);
+            }
+
+            if (collapsingSlave)
+            {
+                if (rPointMap[replacement[1]] == scP0)
+                {
+                    pointMap[srP0] = replacement[1];
+                    rPointMap[replacement[1]] = srP0;
+                }
+                else
+                if (rPointMap[replacement[1]] == scP1)
+                {
+                    pointMap[srP1] = replacement[1];
+                    rPointMap[replacement[1]] = srP1;
+                }
+
+                if (rPointMap[original[1]] == scP0)
+                {
+                    pointMap.erase(scP0);
+                }
+                else
+                if (rPointMap[original[1]] == scP1)
+                {
+                    pointMap.erase(scP1);
+                }
+
+                rPointMap.erase(original[1]);
+            }
+            else
+            {
+                if (pointMap[replacement[1]] == scP0)
+                {
+                    rPointMap[srP0] = replacement[1];
+                    pointMap[replacement[1]] = srP0;
+                }
+                else
+                if (pointMap[replacement[1]] == scP1)
+                {
+                    rPointMap[srP1] = replacement[1];
+                    pointMap[replacement[1]] = srP1;
+                }
+
+                if (pointMap[original[1]] == scP0)
+                {
+                    rPointMap.erase(scP0);
+                }
+                else
+                if (pointMap[original[1]] == scP1)
+                {
+                    rPointMap.erase(scP1);
+                }
+
+                pointMap.erase(original[1]);
+            }
+
+            // Remove the face entries
+            if (collapsingSlave)
+            {
+                faceMap.erase(faceMap[fIndex]);
+                rFaceMap.erase(fIndex);
+            }
+            else
+            {
+                rFaceMap.erase(faceMap[fIndex]);
+                faceMap.erase(fIndex);
             }
         }
     }
