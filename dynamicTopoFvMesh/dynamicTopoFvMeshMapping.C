@@ -855,14 +855,44 @@ void dynamicTopoFvMesh::setPointMapping
     const mapPointPair& pair
 )
 {
+    Map<mapPointPair>::iterator pIter = pointParents_.find(pIndex);
+
+    // Check for existing entries
+    if (pIter == pointParents_.end())
+    {
+        // Update point-parents information
+        pointParents_.set(pIndex, pair);
+    }
+    else
+    {
+        const labelPair invalidPair(-1, -1);
+
+        const scalar nDist = pair.first();
+        const scalar pDist = pIter().first();
+
+        const labelPair& nMapPair = pair.second();
+        const labelPair& pMapPair = pIter().second();
+
+        if (nMapPair == invalidPair && pMapPair == invalidPair)
+        {
+            // Update with mapping information
+            // only if the search radius is greater
+            if (nDist > pDist)
+            {
+                pIter() = pair;
+            }
+        }
+        else
+        {
+            pIter() = pair;
+        }
+    }
+
     if (debug > 3)
     {
         Pout<< "Inserting mapping point: " << pIndex
-            << " pair: " << pair << endl;
+            << " pair: " << pointParents_[pIndex] << endl;
     }
-
-    // Update point-parents information
-    pointParents_.set(pIndex, pair);
 }
 
 
