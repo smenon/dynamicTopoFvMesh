@@ -151,11 +151,15 @@ void topoPointMapper::calcAddressing() const
 
     if (nInsertedPoints)
     {
+        const pointField& mP = mpm_.mesh().points();
+
+        UIndirectList<point> uP(mP, insertedPoints);
+
         FatalErrorIn("void topoPointMapper::calcAddressing() const")
             << " Found " << nInsertedPoints << " points which are"
             << " not mapped from any parent points." << nl
-            << " List: " << nl
-            << insertedPoints
+            << " List: " << insertedPoints << nl
+            << " Points: " << uP
             << abort(FatalError);
     }
 }
