@@ -496,11 +496,6 @@ void mesquiteMotionSolver::readOptions()
         pIDs_ = slipPatchIDs.toc();
     }
 
-    if (twoDMesh_)
-    {
-        return;
-    }
-
     // The following applies only to 3D meshes
     Mesquite::MsqError err;
 
@@ -3464,7 +3459,7 @@ void mesquiteMotionSolver::A
     }
 
     // Transfer buffers after divergence compute.
-    transferBuffers(w);
+    transferBuffers(w, Recv);
 
     // Apply boundary conditions
     applyBCs(w);
@@ -3475,6 +3470,7 @@ void mesquiteMotionSolver::A
 void mesquiteMotionSolver::transferBuffers
 (
     vectorField& field,
+    TransferType type,
     bool fix
 )
 {
@@ -3489,9 +3485,12 @@ void mesquiteMotionSolver::transferBuffers
     {
         label proc = procIndices_[pI];
 
-        const Map<label>& pointMap = sendPointMap_[pI];
+        const Map<label>& pointMap =
+        (
+            type == Send ? sendPointMap_[pI] : recvPointMap_[pI]
+        );
 
-        // Fetch reference to send / recv point buffers
+        // Fetch reference to send / recv buffers
         vectorField& psField = sendPointBuffer_[pI];
         vectorField& prField = recvPointBuffer_[pI];
 
@@ -3501,12 +3500,12 @@ void mesquiteMotionSolver::transferBuffers
         // Prepare the send buffer
         forAllConstIter(Map<label>, pointMap, pIter)
         {
-            const label bufferIndex = pIter();
-            const label fieldIndex = pIter.key();
+            const label bIndex = (type == Send) ? pIter() : pIter.key();
+            const label fIndex = (type == Send) ? pIter.key() : pIter();
 
-            if (fieldIndex < nDomainPoints)
+            if (fIndex < nDomainPoints)
             {
-                psField[bufferIndex] = field[fieldIndex];
+                psField[bIndex] = field[fIndex];
             }
         }
 
@@ -3520,10 +3519,16 @@ void mesquiteMotionSolver::transferBuffers
 
     forAll(procIndices_, pI)
     {
-        const Map<label>& pointMap = recvPointMap_[pI];
+        const Map<label>& pointMap =
+        (
+            type == Send ? recvPointMap_[pI] : sendPointMap_[pI]
+        );
 
-        // Fetch reference to recv point buffer
-        const vectorField& prField = recvPointBuffer_[pI];
+        // Fetch reference to buffer
+        const vectorField& prField =
+        (
+            type == Send ? recvPointBuffer_[pI] : sendPointBuffer_[pI]
+        );
 
         // Copy from recv buffer
         forAllConstIter(Map<label>, pointMap, pIter)
@@ -3535,17 +3540,17 @@ void mesquiteMotionSolver::transferBuffers
                 // Fix field values
                 forAllConstIter(Map<label>, pointMap, pIter)
                 {
-                    const label fieldIndex = pIter();
-                    const label bufferIndex = pIter.key();
+                    const label bIndex = (type == Send) ? pIter.key() : pIter();
+                    const label fIndex = (type == Send) ? pIter() : pIter.key();
 
-                    if (fieldIndex < nDomainPoints)
+                    if (fIndex < nDomainPoints)
                     {
-                        const vector& sVector = field[fieldIndex];
-                        const vector& rVector = prField[bufferIndex];
+                        const vector& sVector = field[fIndex];
+                        const vector& rVector = prField[bIndex];
 
                         if (cmptMag(sVector) < smallVec)
                         {
-                            field[fieldIndex] = rVector;
+                            field[fIndex] = rVector;
                         }
                     }
                 }
@@ -3555,12 +3560,12 @@ void mesquiteMotionSolver::transferBuffers
                 // Correct field values
                 forAllConstIter(Map<label>, pointMap, pIter)
                 {
-                    const label fieldIndex = pIter();
-                    const label bufferIndex = pIter.key();
+                    const label bIndex = (type == Send) ? pIter.key() : pIter();
+                    const label fIndex = (type == Send) ? pIter() : pIter.key();
 
-                    if (fieldIndex < nDomainPoints)
+                    if (fIndex < nDomainPoints)
                     {
-                        field[fieldIndex] += prField[bufferIndex];
+                        field[fIndex] += prField[bIndex];
                     }
                 }
             }
@@ -3891,7 +3896,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
     }
 
     // Sync displacements in parallel
-    transferBuffers(dPointField, true);
+    transferBuffers(dPointField, Send, true);
 
     // Apply boundary layer displacement
     applyBoundaryLayerPatches(dPointField);
@@ -4652,7 +4657,7 @@ void mesquiteMotionSolver::preparePointNormals()
         }
 
         // Transfer buffers across processors
-        transferBuffers(parNormals);
+        transferBuffers(parNormals, Send);
 
         // Set updated normals
         forAll(pIDs_, patchI)

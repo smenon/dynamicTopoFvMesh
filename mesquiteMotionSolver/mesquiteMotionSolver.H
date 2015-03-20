@@ -234,8 +234,16 @@ class mesquiteMotionSolver
         // Component-wise sumMag
         scalar cmptSumMag(const vectorField& field);
 
+        // Transfer enumerant
+        enum TransferType { Send, Recv };
+
         // Transfer buffers for surface point fields
-        void transferBuffers(vectorField &field, bool fix = false);
+        void transferBuffers
+        (
+            vectorField& field,
+            TransferType type,
+            bool fix = false
+        );
 
         // Apply boundary conditions
         void applyBCs(vectorField &field);
