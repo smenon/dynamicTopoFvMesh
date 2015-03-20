@@ -1356,6 +1356,12 @@ void mesquiteMotionSolver::initArrays()
 
             const polyPatch& patch = boundary[patchI];
 
+            // Leave processor boundaries out
+            if (isA<processorPolyPatch>(patch))
+            {
+                continue;
+            }
+
             const label patchStart = patch.start();
 
             forAll(patch, faceI)
@@ -1379,23 +1385,6 @@ void mesquiteMotionSolver::initArrays()
 
         // Prepare the boundary condition vectorField
         origPoints_.setSize(nPoints, vector::zero);
-    }
-
-    if (twoDMesh_)
-    {
-        // Initialise parallel connectivity, if necessary
-        initParallelConnectivity();
-
-        // Optionally fix additional zone points
-        initFixedZones();
-
-        // Optionally fix additional boundary layer zone points
-        initBoundaryLayerZones();
-
-        // Set the flag
-        arraysInitialized_ = true;
-
-        return;
     }
 
     const dictionary& optionsDict = subDict("mesquiteOptions");
@@ -1783,13 +1772,15 @@ void mesquiteMotionSolver::initArrays()
 
     forAll(boundary, patchI)
     {
-        // Leave processor boundaries out.
-        if (isA<processorPolyPatch>(boundary[patchI]))
+        const polyPatch& patch = boundary[patchI];
+
+        // Leave processor boundaries out
+        if (isA<processorPolyPatch>(patch))
         {
             continue;
         }
 
-        const labelList& meshPointLabels = boundary[patchI].meshPoints();
+        const labelList& meshPointLabels = patch.meshPoints();
 
         forAll(meshPointLabels, pointI)
         {
@@ -2037,21 +2028,6 @@ void mesquiteMotionSolver::identifyCoupledPatches()
     {
         procPointLabels_[pI].transfer(procPoints[procIndices_[pI]]);
         globalProcPoints_[pI].transfer(globalProcPoints[procIndices_[pI]]);
-    }
-}
-
-
-// Prepare for parallel surface smoothing
-void mesquiteMotionSolver::initParallelSurfaceSmoothing()
-{
-    if (!surfaceSmoothing_)
-    {
-        return;
-    }
-
-    if (debug)
-    {
-        Info<< "Initializing parallel smoothing connectivity" << endl;
     }
 }
 
@@ -2446,8 +2422,9 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
 
         // Configure neighbour fixFlags
         const labelList& neiFlags = recvFixFlags[pI];
+        const Map<label>& recvPointMap = recvPointMap_[pI];
 
-        forAllConstIter(Map<label>, recvPointMap_[pI], pIter)
+        forAllConstIter(Map<label>, recvPointMap, pIter)
         {
             const label ptIndex = pIter();
 
@@ -2514,6 +2491,55 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
 
     // Invert pointFractions
     pointFractions_ = (1.0 / pointFractions_);
+
+    // Prepare arrays for surface smoothing
+    if (!surfaceSmoothing_)
+    {
+        return;
+    }
+
+    // Blank out pointMarker for lower-ranked processors
+    forAll(procIndices_, pI)
+    {
+        const label proc = procIndices_[pI];
+
+        if (proc >= Pstream::myProcNo())
+        {
+            continue;
+        }
+
+        const label nDomainPoints = refPoints_.size();
+        const Map<label>& recvPointMap = recvPointMap_[pI];
+
+        forAllConstIter(Map<label>, recvPointMap, pIter)
+        {
+            const label ptIndex = pIter();
+
+            if (ptIndex < nDomainPoints)
+            {
+                pointMarker_[ptIndex] = 0.0;
+            }
+        }
+    }
+
+    // Blank out edgeMarker for lower-ranked edges
+    const edgeList& edges = mesh().edges();
+
+    forAll(edges, edgeI)
+    {
+        const edge& thisEdge = edges[edgeI];
+
+        const label i0 = thisEdge[0];
+        const label i1 = thisEdge[1];
+
+        const bool p0 = (pointMarker_[i0] < 0.5);
+        const bool p1 = (pointMarker_[i1] < 0.5);
+
+        if (p0 && p1)
+        {
+            edgeMarker_[edgeI] = 0.0;
+        }
+    }
 }
 
 
@@ -2952,17 +2978,6 @@ void mesquiteMotionSolver::initParallelConnectivity()
 
     // First identify all processors that I talk to...
     identifyCoupledPatches();
-
-    // Prepare for parallel surface smoothing
-    initParallelSurfaceSmoothing();
-
-    // If this is a 2D mesh, we're done
-    if (twoDMesh_)
-    {
-        arraysInitialized_ = true;
-
-        return;
-    }
 
     // Initialize connectivity for mesquite
     initMesquiteParallelArrays();
@@ -3467,6 +3482,90 @@ void mesquiteMotionSolver::transferBuffers
     {
         return;
     }
+
+    const label nDomainPoints = refPoints_.size();
+
+    forAll(procIndices_, pI)
+    {
+        label proc = procIndices_[pI];
+
+        const Map<label>& pointMap = sendPointMap_[pI];
+
+        // Fetch reference to send / recv point buffers
+        vectorField& psField = sendPointBuffer_[pI];
+        vectorField& prField = recvPointBuffer_[pI];
+
+        // Receive field from neighbour
+        parRead(proc, prField);
+
+        // Prepare the send buffer
+        forAllConstIter(Map<label>, pointMap, pIter)
+        {
+            const label bufferIndex = pIter();
+            const label fieldIndex = pIter.key();
+
+            if (fieldIndex < nDomainPoints)
+            {
+                psField[bufferIndex] = field[fieldIndex];
+            }
+        }
+
+        // Send field to neighbour
+        parWrite(proc, psField);
+    }
+
+    // Wait for all transfers to complete.
+    OPstream::waitRequests();
+    IPstream::waitRequests();
+
+    forAll(procIndices_, pI)
+    {
+        const Map<label>& pointMap = recvPointMap_[pI];
+
+        // Fetch reference to recv point buffer
+        const vectorField& prField = recvPointBuffer_[pI];
+
+        // Copy from recv buffer
+        forAllConstIter(Map<label>, pointMap, pIter)
+        {
+            if (fix)
+            {
+                vector smallVec(VSMALL, VSMALL, VSMALL);
+
+                // Fix field values
+                forAllConstIter(Map<label>, pointMap, pIter)
+                {
+                    const label fieldIndex = pIter();
+                    const label bufferIndex = pIter.key();
+
+                    if (fieldIndex < nDomainPoints)
+                    {
+                        const vector& sVector = field[fieldIndex];
+                        const vector& rVector = prField[bufferIndex];
+
+                        if (cmptMag(sVector) < smallVec)
+                        {
+                            field[fieldIndex] = rVector;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Correct field values
+                forAllConstIter(Map<label>, pointMap, pIter)
+                {
+                    const label fieldIndex = pIter();
+                    const label bufferIndex = pIter.key();
+
+                    if (fieldIndex < nDomainPoints)
+                    {
+                        field[fieldIndex] += prField[bufferIndex];
+                    }
+                }
+            }
+        }
+    }
 }
 
 
@@ -3792,70 +3891,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
     }
 
     // Sync displacements in parallel
-    if (Pstream::parRun())
-    {
-        vector smallVec(VSMALL, VSMALL, VSMALL);
-
-        if (twoDMesh_)
-        {
-
-        }
-        else
-        {
-            label nDomainPoints = refPoints_.size();
-
-            forAll(procIndices_, pI)
-            {
-                label proc = procIndices_[pI];
-
-                const Map<label>& pointMap = sendPointMap_[pI];
-
-                // Fetch reference to send / recv point buffers
-                vectorField& psField = sendPointBuffer_[pI];
-                vectorField& prField = recvPointBuffer_[pI];
-
-                // Fill the send buffer
-                forAllConstIter(Map<label>, pointMap, pIter)
-                {
-                    if (pIter.key() < nDomainPoints)
-                    {
-                        psField[pIter()] = dPointField[pIter.key()];
-                    }
-                }
-
-                // Send to neighbour
-                parWrite(proc, psField);
-
-                // Receive from neighbour
-                parRead(proc, prField);
-            }
-
-            // Wait for all transfers to complete.
-            OPstream::waitRequests();
-            IPstream::waitRequests();
-
-            forAll(procIndices_, pI)
-            {
-                const Map<label>& pointMap = recvPointMap_[pI];
-
-                // Fetch reference to recv buffer
-                const vectorField& prField = recvPointBuffer_[pI];
-
-                forAllConstIter(Map<label>, pointMap, pIter)
-                {
-                    // Only update points in this domain
-                    if (pIter() < nDomainPoints)
-                    {
-                        // Only update for non-zero displacement
-                        if (cmptMag(dPointField[pIter()]) < smallVec)
-                        {
-                            dPointField[pIter()] = prField[pIter.key()];
-                        }
-                    }
-                }
-            }
-        }
-    }
+    transferBuffers(dPointField, true);
 
     // Apply boundary layer displacement
     applyBoundaryLayerPatches(dPointField);
@@ -4588,6 +4624,49 @@ void mesquiteMotionSolver::preparePointNormals()
             forAll(thisFace, pointI)
             {
                 patchNormals[thisFace[pointI]] += n;
+            }
+        }
+    }
+
+    if (Pstream::parRun())
+    {
+        const label nPoints = mesh().nPoints();
+
+        // Size up the buffer
+        vectorField parNormals(nPoints, vector::zero);
+
+        // Copy point-normals to buffer
+        forAll(pIDs_, patchI)
+        {
+            const label patchID = pIDs_[patchI];
+            const polyPatch& patch = boundary[patchID];
+            const labelList& meshPts = patch.meshPoints();
+
+            const vectorField& patchNormals = pNormals_[patchI];
+
+            forAll(meshPts, pointI)
+            {
+                const label pIndex = meshPts[pointI];
+                parNormals[pIndex] = patchNormals[pointI];
+            }
+        }
+
+        // Transfer buffers across processors
+        transferBuffers(parNormals);
+
+        // Set updated normals
+        forAll(pIDs_, patchI)
+        {
+            const label patchID = pIDs_[patchI];
+            const polyPatch& patch = boundary[patchID];
+            const labelList& meshPts = patch.meshPoints();
+
+            vectorField& patchNormals = pNormals_[patchI];
+
+            forAll(meshPts, pointI)
+            {
+                const label pIndex = meshPts[pointI];
+                patchNormals[pointI] = parNormals[pIndex];
             }
         }
     }

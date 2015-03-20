@@ -263,9 +263,6 @@ class mesquiteMotionSolver
         // Identify coupled patches
         void identifyCoupledPatches();
 
-        // Prepare for parallel surface smoothing
-        void initParallelSurfaceSmoothing();
-
         // Prepare mesquite connectivity for parallel runs
         void initMesquiteParallelArrays();
 
