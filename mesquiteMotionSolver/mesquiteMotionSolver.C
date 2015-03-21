@@ -1371,8 +1371,8 @@ void mesquiteMotionSolver::initArrays()
                     const label eIndex = thisEdge[indexI];
                     const label pIndex = thisFace[indexI];
 
-                    edgeMarker_[eIndex] = 0.0;
-                    pointMarker_[pIndex] = 0.0;
+                    edgeMarker_[eIndex] = 1.0;
+                    pointMarker_[pIndex] = 1.0;
                     bdy_[pIndex] = vector::zero;
                 }
             }
@@ -2518,21 +2518,43 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
     }
 
     // Blank out edgeMarker for lower-ranked edges
-    const edgeList& edges = mesh().edges();
+    const labelListList& faceEdges = mesh().faceEdges();
 
-    forAll(edges, edgeI)
+    forAll(boundary, patchI)
     {
-        const edge& thisEdge = edges[edgeI];
+        const polyPatch& patch = boundary[patchI];
 
-        const label i0 = thisEdge[0];
-        const label i1 = thisEdge[1];
-
-        const bool p0 = (pointMarker_[i0] < 0.5);
-        const bool p1 = (pointMarker_[i1] < 0.5);
-
-        if (p0 && p1)
+        // Pick lower-ranked processor boundaries
+        if (isA<processorPolyPatch>(patch))
         {
-            edgeMarker_[edgeI] = 0.0;
+            const processorPolyPatch& procPatch =
+            (
+                refCast<const processorPolyPatch>(patch)
+            );
+
+            if (procPatch.neighbProcNo() >= Pstream::myProcNo())
+            {
+                continue;
+            }
+        }
+        else
+        {
+            continue;
+        }
+
+        const label patchStart = patch.start();
+
+        forAll(patch, faceI)
+        {
+            const label fIndex = faceI + patchStart;
+            const labelList& thisEdge = faceEdges[fIndex];
+
+            forAll(thisEdge, indexI)
+            {
+                const label eIndex = thisEdge[indexI];
+
+                edgeMarker_[eIndex] = 0.0;
+            }
         }
     }
 }
