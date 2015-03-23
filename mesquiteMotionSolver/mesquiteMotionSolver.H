@@ -181,22 +181,18 @@ class mesquiteMotionSolver
 
         //- Data specific to Laplacian surface smoothing
         labelList pIDs_;
-        labelList offsets_;
+        vectorField bdy_;
+        vectorField gradEdge_;
+        scalarField edgeMarker_;
+        scalarField pointMarker_;
+        scalarField edgeConstant_;
         List<vectorField> pNormals_;
-        List<vectorField> gradEdge_;
-        List<vectorField> localPts_;
-        List<scalarField> edgeMarker_;
-        List<scalarField> edgeConstant_;
 
         //- Data for the auxiliary entities
         labelList procIndices_;
         scalarField pointFractions_;
         labelListList procPointLabels_;
         List<List<labelPair> > globalProcPoints_;
-
-        List<Map<label> > unmatchedRecvPoints_;
-        List<vectorField> sendSurfFields_, recvSurfFields_;
-        List<Map<label> > sendSurfPointMap_, recvSurfPointMap_;
 
         List<Map<label> > sendPointMap_, recvPointMap_;
         List<labelList> sendCellToNode_, recvCellToNode_;
@@ -205,15 +201,7 @@ class mesquiteMotionSolver
         //- Explicit patch coupling for surface smoothing
         Map<label> patchCoupling_;
 
-        // Fields for the CG solver
-        vectorField bV_;
-        vectorField xV_;
-        vectorField pV_;
-        vectorField rV_;
-        vectorField wV_;
-        vectorField bdy_;
-        scalarField pointMarker_;
-
+        //- Old domain volume
         scalar oldVolume_;
 
     // Private Member Functions
@@ -247,7 +235,7 @@ class mesquiteMotionSolver
         scalar cmptSumMag(const vectorField& field);
 
         // Transfer buffers for surface point fields
-        void transferBuffers(vectorField &field, bool fix = false);
+        void transferBuffers(vectorField& field, bool fix = false);
 
         // Apply boundary conditions
         void applyBCs(vectorField &field);
@@ -274,9 +262,6 @@ class mesquiteMotionSolver
 
         // Identify coupled patches
         void identifyCoupledPatches();
-
-        // Prepare for parallel surface smoothing
-        void initParallelSurfaceSmoothing();
 
         // Prepare mesquite connectivity for parallel runs
         void initMesquiteParallelArrays();
