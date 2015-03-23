@@ -4646,36 +4646,30 @@ void mesquiteMotionSolver::preparePointNormals()
         const label nPoints = mesh().nPoints();
 
         // Size up the buffer
-        vectorField parNormals(nPoints, vector::zero);
+        vectorField parNormals(nPoints);
 
-        // Copy point-normals to buffer
         forAll(pIDs_, patchI)
         {
             const label patchID = pIDs_[patchI];
             const polyPatch& patch = boundary[patchID];
             const labelList& meshPts = patch.meshPoints();
 
-            const vectorField& patchNormals = pNormals_[patchI];
+            // Prepare buffer for this patch
+            parNormals = vector::zero;
 
+            vectorField& patchNormals = pNormals_[patchI];
+
+            // Copy point-normals to buffer
             forAll(meshPts, pointI)
             {
                 const label pIndex = meshPts[pointI];
                 parNormals[pIndex] = patchNormals[pointI];
             }
-        }
 
-        // Transfer buffers across processors
-        transferBuffers(parNormals);
+            // Transfer buffers across processors
+            transferBuffers(parNormals);
 
-        // Set updated normals
-        forAll(pIDs_, patchI)
-        {
-            const label patchID = pIDs_[patchI];
-            const polyPatch& patch = boundary[patchID];
-            const labelList& meshPts = patch.meshPoints();
-
-            vectorField& patchNormals = pNormals_[patchI];
-
+            // Set updated normals
             forAll(meshPts, pointI)
             {
                 const label pIndex = meshPts[pointI];
