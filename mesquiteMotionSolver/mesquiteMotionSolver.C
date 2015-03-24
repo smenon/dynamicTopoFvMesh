@@ -4707,13 +4707,139 @@ void mesquiteMotionSolver::prepareEdgeConstants
         Info<< "Preparing non-uniform edge constants" << endl;
     }
 
+    // Fetch the type of edge constant
+    const word type = optionsDict.lookup("nonUniformEdgeConstant");
+
+    // Define available types
+    const char* typeNames[] =
+    {
+        "magLength",
+        "invLength",
+        "magSqrLength",
+        "invSqrLength",
+        "constant",
+        "disabled"
+    };
+
+    const label nTypes(sizeof(typeNames) / sizeof(typeNames[0]));
+
+    // Compare against available types
+    label index = nTypes;
+
+    for (label i = 0; i < nTypes; i++)
+    {
+        if (type == typeNames[i])
+        {
+            index = i;
+            break;
+        }
+    }
+
+    if (index == nTypes)
+    {
+        Info<< nl << " Available methods: " << nl;
+
+        for (label i = 0; i < nTypes; i++)
+        {
+            Info<< "    " << typeNames[i] << nl;
+        }
+
+        FatalErrorIn
+        (
+            "void mesquiteMotionSolver::prepareEdgeConstants"
+            "(const vectorField&)"
+        )
+            << " Invalid method: " << type << " specified." << nl
+            << abort(FatalError);
+    }
+
+    // Prepare edge constant based on selection
     const edgeList& edges = mesh().edges();
 
-    forAll(edges, edgeI)
+    switch (index)
     {
-        const edge& thisEdge = edges[edgeI];
+        case 0:
+        {
+            // Length magnitude
+            forAll(edges, edgeI)
+            {
+                const edge& tEdge = edges[edgeI];
+                const scalar edgeMag = Foam::mag(p[tEdge[1]] - p[tEdge[0]]);
 
-        edgeConstant_[edgeI] = Foam::mag(p[thisEdge[1]] - p[thisEdge[0]]);
+                edgeConstant_[edgeI] = edgeMag;
+            }
+
+            break;
+        }
+
+        case 1:
+        {
+            // Inverse magnitude
+            forAll(edges, edgeI)
+            {
+                const edge& tEdge = edges[edgeI];
+                const scalar edgeMag = Foam::mag(p[tEdge[1]] - p[tEdge[0]]);
+
+                edgeConstant_[edgeI] = 1.0 / edgeMag + VSMALL;
+            }
+
+            break;
+        }
+
+        case 2:
+        {
+            // Length square magnitude
+            forAll(edges, edgeI)
+            {
+                const edge& tEdge = edges[edgeI];
+                const scalar edgeMag = Foam::magSqr(p[tEdge[1]] - p[tEdge[0]]);
+
+                edgeConstant_[edgeI] = edgeMag;
+            }
+
+            break;
+        }
+
+        case 3:
+        {
+            // Inverse square magnitude
+            forAll(edges, edgeI)
+            {
+                const edge& tEdge = edges[edgeI];
+                const scalar edgeMag = Foam::magSqr(p[tEdge[1]] - p[tEdge[0]]);
+
+                edgeConstant_[edgeI] = 1.0 / edgeMag + VSMALL;
+            }
+
+            break;
+        }
+
+        case 4:
+        {
+            // Constant value
+            const scalar val = readScalar(optionsDict.lookup("edgeConstant"));
+
+            forAll(edges, edgeI)
+            {
+                edgeConstant_[edgeI] = val;
+            }
+
+            break;
+        }
+
+        case 5:
+        {
+            // Disabled (default to 1.0)
+            forAll(edges, edgeI)
+            {
+                edgeConstant_[edgeI] = 1.0;
+            }
+
+            break;
+        }
+
+        default:
+        {}
     }
 }
 
