@@ -145,7 +145,7 @@ class mesquiteMotionSolver
         //- Demand-driven pointCells addressing
         mutable labelListList pointCells_;
 
-        //- Demand-drive cell offset addressing
+        //- Demand-driven cell offset addressing
         mutable labelList cellOffset_;
 
         //- Reference points
@@ -234,8 +234,11 @@ class mesquiteMotionSolver
         // Component-wise sumMag
         scalar cmptSumMag(const vectorField& field);
 
+        // Enumerants for transfer types
+        enum TransferType { CORRECT, FIX, PATCH };
+
         // Transfer buffers for surface point fields
-        void transferBuffers(vectorField& field, bool fix = false);
+        void transferBuffers(vectorField& field, TransferType type = CORRECT);
 
         // Apply boundary conditions
         void applyBCs(vectorField &field);
@@ -271,6 +274,9 @@ class mesquiteMotionSolver
 
         // Prepare flags for fixed zones
         void initFixedZones();
+
+        // Fix triple-points for surface smoothing
+        void fixTriplePoints();
 
         // Fix decomposed centroids
         void fixDecomposedCentroids();

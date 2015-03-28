@@ -496,7 +496,40 @@ void mesquiteMotionSolver::readOptions()
         pIDs_ = slipPatchIDs.toc();
     }
 
+    // Set decomposition type, if available
+    if (optionsDict.found("decompType"))
+    {
+        word dType(optionsDict.lookup("decompType"));
+
+        if (dType == "cell")
+        {
+            decompType_ = 1;
+        }
+        else
+        if (dType == "face")
+        {
+            decompType_ = 2;
+        }
+        else
+        {
+            FatalErrorIn("void mesquiteMotionSolver::readOptions()")
+                << "Unknown decomposition type: " << dType
+                << "Available types are: cell or face"
+                << abort(FatalError);
+        }
+    }
+    else
+    {
+        // Set default
+        decompType_ = 2;
+    }
+
     // The following applies only to 3D meshes
+    if (twoDMesh_)
+    {
+        return;
+    }
+
     Mesquite::MsqError err;
 
     // Add existing metrics to the hash-table
@@ -1257,34 +1290,6 @@ void mesquiteMotionSolver::readOptions()
 
         tcOuter_.add_iteration_limit(1);
     }
-
-    // Set decomposition type, if available
-    if (optionsDict.found("decompType"))
-    {
-        word dType(optionsDict.lookup("decompType"));
-
-        if (dType == "cell")
-        {
-            decompType_ = 1;
-        }
-        else
-        if (dType == "face")
-        {
-            decompType_ = 2;
-        }
-        else
-        {
-            FatalErrorIn("void mesquiteMotionSolver::readOptions()")
-                << "Unknown decomposition type: " << dType
-                << "Available types are: cell or face"
-                << abort(FatalError);
-        }
-    }
-    else
-    {
-        // Set default
-        decompType_ = 2;
-    }
 }
 
 
@@ -1794,6 +1799,9 @@ void mesquiteMotionSolver::initArrays()
 
     // Fix decomposed centroids
     fixDecomposedCentroids();
+
+    // Fix triple-points for surface smoothing
+    fixTriplePoints();
 
     // Clear demand-driven addressing
     clearDemandDrivenAddressing();
@@ -2672,6 +2680,86 @@ void mesquiteMotionSolver::initFixedZones()
 }
 
 
+// Fix triple-points for surface smoothing
+void mesquiteMotionSolver::fixTriplePoints()
+{
+    if (!surfaceSmoothing_ || pIDs_.size() < 3)
+    {
+        return;
+    }
+
+    const polyBoundaryMesh& boundary = mesh().boundaryMesh();
+
+    const label nPoints = mesh().nPoints();
+    const faceList& faces = mesh().faces();
+
+    vectorField triplePoints(nPoints, vector::zero);
+
+    const scalar cTol = 0.5;
+
+    forAll(pIDs_, patchI)
+    {
+        const label patchID = pIDs_[patchI];
+        const polyPatch& patch = boundary[patchID];
+
+        const label patchStart = patch.start();
+        const scalar patchValue = 1.0 + scalar(patchID);
+
+        forAll(patch, faceI)
+        {
+            const label fIndex = faceI + patchStart;
+            const face& thisFace = faces[fIndex];
+
+            forAll(thisFace, indexI)
+            {
+                const label pIndex = thisFace[indexI];
+                vector& pointValue = triplePoints[pIndex];
+
+                for (label cmpt = 0; cmpt < 3; cmpt++)
+                {
+                    if (pointValue[cmpt] < 1.0)
+                    {
+                        // New patch at this point
+                        pointValue[cmpt] = patchValue;
+                        break;
+                    }
+                    else
+                    if (Foam::mag(pointValue[cmpt] - patchValue) < cTol)
+                    {
+                        // Patch already visited at this point
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    transferBuffers(triplePoints, PATCH);
+
+    forAll(triplePoints, pointI)
+    {
+        const vector& pointValue = triplePoints[pointI];
+
+        label nPatchesPerPoint = 0;
+
+        // Count the number of patches per point
+        for (label cmpt = 0; cmpt < 3; cmpt++)
+        {
+            if (pointValue[cmpt] > 0.0)
+            {
+                nPatchesPerPoint++;
+            }
+        }
+
+        // If there's at least 3 patches touching this point, fix it
+        if (nPatchesPerPoint == 3)
+        {
+            bdy_[pointI] = vector::zero;
+        }
+    }
+}
+
+
 // Fix decomposed centroids
 void mesquiteMotionSolver::fixDecomposedCentroids()
 {
@@ -3492,7 +3580,7 @@ void mesquiteMotionSolver::A
 void mesquiteMotionSolver::transferBuffers
 (
     vectorField& field,
-    bool fix
+    TransferType type
 )
 {
     if (!Pstream::parRun())
@@ -3542,40 +3630,103 @@ void mesquiteMotionSolver::transferBuffers
         // Fetch reference to buffer
         const vectorField& prField = recvPointBuffer_[pI];
 
-        if (fix)
+        switch (type)
         {
-            vector smallVec(VSMALL, VSMALL, VSMALL);
-
-            // Fix field values
-            forAllConstIter(Map<label>, pointMap, pIter)
+            case FIX:
             {
-                const label fIndex = pIter();
-                const label bIndex = pIter.key();
+                vector smallVec(VSMALL, VSMALL, VSMALL);
 
-                if (fIndex < nDomainPoints)
+                // Fix field values
+                forAllConstIter(Map<label>, pointMap, pIter)
                 {
-                    const vector& sVector = field[fIndex];
-                    const vector& rVector = prField[bIndex];
+                    const label fIndex = pIter();
+                    const label bIndex = pIter.key();
 
-                    if (cmptMag(sVector) < smallVec)
+                    if (fIndex < nDomainPoints)
                     {
-                        field[fIndex] = rVector;
+                        const vector& sVector = field[fIndex];
+                        const vector& rVector = prField[bIndex];
+
+                        if (cmptMag(sVector) < smallVec)
+                        {
+                            field[fIndex] = rVector;
+                        }
                     }
                 }
-            }
-        }
-        else
-        {
-            // Correct field values
-            forAllConstIter(Map<label>, pointMap, pIter)
-            {
-                const label fIndex = pIter();
-                const label bIndex = pIter.key();
 
-                if (fIndex < nDomainPoints)
+                break;
+            }
+
+            case CORRECT:
+            {
+                // Correct field values
+                forAllConstIter(Map<label>, pointMap, pIter)
                 {
-                    field[fIndex] += prField[bIndex];
+                    const label fIndex = pIter();
+                    const label bIndex = pIter.key();
+
+                    if (fIndex < nDomainPoints)
+                    {
+                        field[fIndex] += prField[bIndex];
+                    }
                 }
+
+                break;
+            }
+
+            case PATCH:
+            {
+                const scalar cTol = 0.5;
+
+                // Check patches for field values and augment
+                forAllConstIter(Map<label>, pointMap, pIter)
+                {
+                    const label fIndex = pIter();
+                    const label bIndex = pIter.key();
+
+                    if (fIndex < nDomainPoints)
+                    {
+                        const vector& sVector = field[fIndex];
+                        const vector& rVector = prField[bIndex];
+
+                        for (label cmptI = 0; cmptI < 3; cmptI++)
+                        {
+                            const scalar rCmptValue = rVector[cmptI];
+
+                            if (rCmptValue < 1.0)
+                            {
+                                break;
+                            }
+
+                            for (label cmptJ = 0; cmptJ < 3; cmptJ++)
+                            {
+                                const scalar sCmptValue = sVector[cmptJ];
+
+                                if (sCmptValue < 1.0)
+                                {
+                                    // New patch at this point
+                                    field[fIndex][cmptJ] = rCmptValue;
+                                    break;
+                                }
+                                else
+                                if (Foam::mag(rCmptValue - sCmptValue) < cTol)
+                                {
+                                    // Patch already visited at this point
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                break;
+            }
+
+            default:
+            {
+                FatalErrorIn("void mesquiteMotionSolver::transferBuffers()")
+                    << "Unknown transfer type."
+                    << abort(FatalError);
             }
         }
     }
@@ -3904,7 +4055,7 @@ void mesquiteMotionSolver::applyFixedValuePatches()
     }
 
     // Sync displacements in parallel
-    transferBuffers(dPointField, true);
+    transferBuffers(dPointField, FIX);
 
     // Apply boundary layer displacement
     applyBoundaryLayerPatches(dPointField);
