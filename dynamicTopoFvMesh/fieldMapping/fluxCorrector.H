@@ -129,6 +129,9 @@ public:
         //- Is flux-correction required?
         virtual bool required() const;
 
+        //- Optionally cache an old-flux field to maintain divergence
+        virtual void cacheFluxes() const;
+
         //- Interpolate fluxes to a specified list of faces
         virtual void interpolateFluxes(const labelList& faces) const;
 

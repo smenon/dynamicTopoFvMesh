@@ -42,6 +42,7 @@ SourceFiles
 #define PoissonCorrector_H
 
 #include "Switch.H"
+#include "autoPtr.H"
 #include "fluxCorrector.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -62,6 +63,8 @@ class PoissonCorrector
         //- Is flux-correction required?
         Switch required_;
 
+        //- Cached divergence field
+        mutable autoPtr<volScalarField> divUPtr_;
 
     // Private Member Functions
 
@@ -92,6 +95,9 @@ public:
 
         //- Is flux-correction required?
         virtual bool required() const;
+
+        //- Optionally cache an old-flux field to maintain divergence
+        virtual void cacheFluxes() const;
 
         //- Interpolate fluxes to a specified list of faces
         virtual void interpolateFluxes(const labelList& faces) const;

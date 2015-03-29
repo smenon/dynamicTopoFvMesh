@@ -131,6 +131,17 @@ bool fluxCorrector::required() const
 }
 
 
+//- Optionally cache an old-flux field to maintain divergence
+void fluxCorrector::cacheFluxes() const
+{
+    if (required())
+    {
+        // Throw an error stating that the scheme hasn't been implemented
+        notImplemented("void fluxCorrector::cacheFluxes() const");
+    }
+}
+
+
 //- Interpolate fluxes to a specified list of faces
 void fluxCorrector::interpolateFluxes(const labelList& faces) const
 {

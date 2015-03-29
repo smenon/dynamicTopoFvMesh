@@ -567,6 +567,12 @@ void topoMapper::storeOldTimes() const
 //- Store mesh information for the mapping stage
 void topoMapper::storeMeshInformation() const
 {
+    // Store cached fluxes
+    if (surfaceFluxCorrector().required())
+    {
+        surfaceFluxCorrector().cacheFluxes();
+    }
+
     // Store field-gradients
     storeGradients();
 

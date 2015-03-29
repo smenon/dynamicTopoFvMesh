@@ -73,6 +73,41 @@ bool PoissonCorrector::required() const
 }
 
 
+//- Optionally cache an old-flux field to maintain divergence
+void PoissonCorrector::cacheFluxes() const
+{
+    if (required())
+    {
+        const dictionary& subDict = dict().subDict("PoissonCorrector");
+
+        // Search the dictionary for field information
+        word UName(subDict.lookup("U"));
+        word phiName(subDict.lookup("phi"));
+
+        // Lookup fields from the registry
+        const volVectorField& U =
+        (
+            mesh().lookupObject<volVectorField>(UName)
+        );
+
+        const surfaceScalarField& phi =
+        (
+            mesh().lookupObject<surfaceScalarField>(phiName)
+        );
+
+        // Cache the old divergence of the velocity field
+        divUPtr_.reset
+        (
+            new volScalarField
+            (
+                "divU_cached",
+                fvc::div(fvc::absolute(phi, U))
+            )
+        );
+    }
+}
+
+
 //- Interpolate fluxes to a specified list of faces
 void PoissonCorrector::interpolateFluxes(const labelList& faces) const
 {
@@ -85,6 +120,14 @@ void PoissonCorrector::interpolateFluxes(const labelList& faces) const
         word phiName(subDict.lookup("phi"));
 
         // Lookup fields from the registry
+        volVectorField& U =
+        (
+            const_cast<volVectorField&>
+            (
+                mesh().lookupObject<volVectorField>(UName)
+            )
+        );
+
         surfaceScalarField& phi =
         (
             const_cast<surfaceScalarField&>
@@ -93,29 +136,44 @@ void PoissonCorrector::interpolateFluxes(const labelList& faces) const
             )
         );
 
-        const volVectorField& U = mesh().lookupObject<volVectorField>(UName);
+        const surfaceVectorField& Sf = mesh().Sf();
 
         // Interpolate mapped velocity to faces
-        tmp<surfaceScalarField> tphiU = fvc::interpolate(U) & mesh().Sf();
+        tmp<surfaceScalarField> tphiU = fvc::interpolate(U) & Sf;
 
         // Alias for convenience
         surfaceScalarField& phiU = tphiU();
 
         phiU.rename("phiU");
 
-        forAll(faces, faceI)
-        {
-            phi[faces[faceI]] = phiU[faces[faceI]];
-//            phi[faces[faceI]] = 0.0;
-        }
-
         // Over-write phi entirely
-//        phi = phiU;
+        phi = phiU;
 
-//        forAll(phi.internalField(), faceI)
-//        {
-//            phi.internalField()[faceI] = 0.0;
-//        }
+        // If the mesh is moving, correct the velocity BCs on the moving walls
+        // to ensure the corrected fluxes and velocity are consistent
+        if (mesh().moving())
+        {
+            forAll(U.boundaryField(), patchi)
+            {
+                if (U.boundaryField()[patchi].fixesValue())
+                {
+                    U.boundaryField()[patchi].initEvaluate();
+                }
+            }
+
+            forAll(U.boundaryField(), patchi)
+            {
+                if (U.boundaryField()[patchi].fixesValue())
+                {
+                    U.boundaryField()[patchi].evaluate();
+
+                    phi.boundaryField()[patchi] =
+                    (
+                        U.boundaryField()[patchi] & Sf.boundaryField()[patchi]
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -132,16 +190,16 @@ void PoissonCorrector::updateFluxes() const
 
     // Search the dictionary for field information
     word pName(subDict.lookup("p"));
-    word UName(subDict.lookup("U"));
     word rAUName(subDict.lookup("rAU"));
     word phiName(subDict.lookup("phi"));
+    word solName(subDict.lookup("solutionDict"));
 
     // Fetch references
     const fvMesh& mesh = fluxCorrector::mesh();
     const Time& runTime = mesh.time();
 
+    // Lookup fields from the registry
     const volScalarField& p = mesh.lookupObject<volScalarField>(pName);
-    //const volVectorField& U = mesh.lookupObject<volVectorField>(UName);
     const volScalarField& rAU = mesh.lookupObject<volScalarField>(rAUName);
 
     surfaceScalarField& phi =
@@ -152,13 +210,19 @@ void PoissonCorrector::updateFluxes() const
         )
     );
 
-    wordList pcorrTypes(p.boundaryField().types());
+    // Initialize BCs list for pcorr to zero-gradient
+    wordList pcorrTypes
+    (
+        p.boundaryField().size(),
+        zeroGradientFvPatchScalarField::typeName
+    );
 
-    for (label i=0; i<p.boundaryField().size(); i++)
+    // Set BCs of pcorr to fixed-value for patches at which p is fixed
+    forAll(p.boundaryField(), patchI)
     {
-        if (p.boundaryField()[i].fixesValue())
+        if (p.boundaryField()[patchI].fixesValue())
         {
-            pcorrTypes[i] = fixedValueFvPatchScalarField::typeName;
+            pcorrTypes[patchI] = fixedValueFvPatchScalarField::typeName;
         }
     }
 
@@ -177,45 +241,25 @@ void PoissonCorrector::updateFluxes() const
         pcorrTypes
     );
 
-    dictionary piso = mesh.solutionDict().subDict("PISO");
+    // Fetch the relevant dictionary (PISO, SIMPLE, PIMPLE, etc)
+    dictionary solDict = mesh.solutionDict().subDict(solName);
 
     label pRefCell = 0;
     scalar pRefValue = 0.0;
-    setRefCell(p, piso, pRefCell, pRefValue);
+    label nNonOrthCorr = 0;
 
-    int nNonOrthCorr = 0;
-    if (piso.found("nNonOrthogonalCorrectors"))
+    setRefCell(p, solDict, pRefCell, pRefValue);
+
+    if (solDict.found("nNonOrthogonalCorrectors"))
     {
-        nNonOrthCorr = readInt(piso.lookup("nNonOrthogonalCorrectors"));
+        nNonOrthCorr = readLabel(solDict.lookup("nNonOrthogonalCorrectors"));
     }
 
-    //dimensionedScalar rAUf("(1|A(U))", dimTime, 1.0);
-
-    // Adjust dimensions for cases involving
-    // density-normalised pressure
-    //if (p.dimensions() == dimPressure)
-    //{
-    //    rAU.dimensions() /= dimDensity;
-    //}
-
-    //adjustPhi(phi, U, pcorr);
-
-#   include "initContinuityErrs.H"
-#   include "continuityErrs.H"
-
-    {
-#       include "CourantNo.H"
-    }
-
-    // Write out phi prior to correction
-//    surfaceVectorField prePhi = phi * (mesh.Sf() / mesh.magSf());
-//    prePhi.rename("prePhi");
-
-    for (int nonOrth=0; nonOrth<=nNonOrthCorr; nonOrth++)
+    for (label nonOrth = 0; nonOrth <= nNonOrthCorr; nonOrth++)
     {
         fvScalarMatrix pcorrEqn
         (
-            fvm::laplacian(rAU, pcorr) == fvc::div(phi)
+            fvm::laplacian(rAU, pcorr) == fvc::div(phi) - divUPtr_()
         );
 
         pcorrEqn.setReference(pRefCell, pRefValue);
@@ -226,22 +270,6 @@ void PoissonCorrector::updateFluxes() const
             phi -= pcorrEqn.flux();
         }
     }
-
-#   include "continuityErrs.H"
-
-    {
-#       include "CourantNo.H"
-    }
-
-    // Write out phi prior to correction
-//    surfaceVectorField postPhi = phi * (mesh.Sf() / mesh.magSf());
-//    postPhi.rename("postPhi");
-//
-//    if (mesh.time().outputTime())
-//    {
-//        prePhi.write();
-//        postPhi.write();
-//    }
 }
 
 
