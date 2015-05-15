@@ -216,7 +216,6 @@ void topoPointPatchMapper::calcInsertedAddressing() const
         // Find location of point on subMesh patch
         const labelMapList& patchMaps = procPatchMaps[pI];
         const labelList& patchStarts = procPatchStarts[pI];
-        const labelMap& patchMap = *(patchMaps[patch_.index()]);
 
         if (patch_.index() >= patchStarts.size())
         {
@@ -225,6 +224,7 @@ void topoPointPatchMapper::calcInsertedAddressing() const
 
         // This point may not belong to any patch faces on the subMesh,
         // so check for its existence first
+        const labelMap& patchMap = *(patchMaps[patch_.index()]);
         const label mapPoint = pair.second();
 
         ppIter = patchMap.find(mapPoint);

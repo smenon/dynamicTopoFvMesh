@@ -7,3 +7,9 @@
 *.dep
 linux*
 lnInclude
+
+# Ignore QtCreator files
+*.config
+*.creator
+*.files
+*.includes
