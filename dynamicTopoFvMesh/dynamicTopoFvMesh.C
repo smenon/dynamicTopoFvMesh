@@ -4527,7 +4527,7 @@ bool dynamicTopoFvMesh::resetMesh()
     }
 
     // Obtain mesh stats after topo-changes
-    meshQuality(true);
+    meshQuality("Final");
 
     // Dump length-scale to disk, if requested.
     calculateLengthScale(true);
@@ -4699,7 +4699,7 @@ bool dynamicTopoFvMesh::update()
     }
 
     // Obtain mesh stats before topo-changes
-    bool noSlivers = meshQuality(true);
+    bool noSlivers = meshQuality("Input");
 
     // Return if the interval is invalid,
     // not at re-mesh interval, or slivers are absent.

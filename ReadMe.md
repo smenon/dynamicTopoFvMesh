@@ -44,4 +44,3 @@ This code is known to work with OpenFOAM.
 ## Disclaimer
 This offering is not approved or endorsed by ESI or OpenCFD Ltd, the producer of the OpenFOAM software and owner of the OpenFOAM and OpenCFD trade marks.
 
-[![githalytics.com alpha](https://cruel-carlota.gopagoda.com/5760a35830bafd3e1ad3b93b46d33f15 "githalytics.com")](http://githalytics.com/smenon/dynamicTopoFvMesh)

@@ -1156,7 +1156,11 @@ class dynamicTopoFvMesh
         ) const;
 
         // Dump cell-quality statistics
-        bool meshQuality(bool outputOption);
+        bool meshQuality
+        (
+            const word& disp,
+            bool outputOption = true
+        );
 
 public:
 

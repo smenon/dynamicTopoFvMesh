@@ -51,6 +51,7 @@ namespace Foam
 // Compute mesh-quality, and return true if no slivers are present
 bool dynamicTopoFvMesh::meshQuality
 (
+    const word& disp,
     bool outputOption
 )
 {
@@ -215,12 +216,14 @@ bool dynamicTopoFvMesh::meshQuality
         reduce(nCells, sumOp<label>());
 
         Info<< nl
-            << " ~~~ Mesh Quality Statistics ~~~ " << nl
+            << " ~~~~~ " << disp
+            << " Mesh Quality"
+            << " ~~~~~ " << nl
             << " Min: " << minQuality << nl
             << " Max: " << maxQuality << nl
             << " Mean: " << meanQuality/nCells << nl
             << " Cells: " << nCells << nl
-            << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << nl
+            << " ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ " << nl
             << endl;
     }
 
