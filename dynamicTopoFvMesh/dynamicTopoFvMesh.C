@@ -4107,6 +4107,9 @@ bool dynamicTopoFvMesh::resetMesh()
         //  - Must be done prior to field-transfers and mesh reset
         fieldMapper.storeMeshInformation();
 
+        // De-register all pointFields before updateMesh
+        topoMapper::deregisterPointFields(*this);
+
         // Obtain the number of patches before
         // any possible boundary reset
         label nOldPatches = boundaryMesh().size();
@@ -4413,6 +4416,9 @@ bool dynamicTopoFvMesh::resetMesh()
         // Update the underlying mesh, and map all related fields
         updateMesh(mpm);
 
+        // Re-register all pointFields after updateMesh
+        topoMapper::reregisterPointFields(*this);
+
         if (mpm.hasMotionPoints())
         {
             // Perform a dummy movePoints to force V0 creation
@@ -4606,14 +4612,8 @@ void dynamicTopoFvMesh::updateMesh(const mapPolyMesh& mpm)
     // Delete oldPoints in polyMesh
     polyMesh::resetMotion();
 
-    // De-register all pointFields before updateMesh
-    topoMapper::deregisterPointFields(*this);
-
     // Update fvMesh and polyMesh, and map all fields
     fvMesh::updateMesh(mpm);
-
-    // Re-register all pointFields after updateMesh
-    topoMapper::reregisterPointFields(*this);
 }
 
 

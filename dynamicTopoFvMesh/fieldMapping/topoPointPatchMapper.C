@@ -457,28 +457,29 @@ topoPointPatchMapper::topoPointPatchMapper
 {
     // Compute sizeBeforeMapping
     {
-        label patchIndex = patch_.index();
-        label totalSize = mpm_.oldPatchNMeshPoints()[patchIndex];
-
         // Fetch offset sizes from topoMapper
         const labelListList& sizes = tMapper_.pointPatchSizes();
+        const labelList& oPatchSizes = mpm_.oldPatchNMeshPoints();
 
         // Add offset sizes
         if (sizes.size())
         {
             // Fetch number of physical patches
-            label nPhysical = sizes[0].size();
+            const label nPhysical = sizes[0].size();
+            const label patchIndex = patch_.index();
 
             if (patchIndex < nPhysical)
             {
+                label totalSize = oPatchSizes[patchIndex];
+
                 forAll(sizes, pI)
                 {
                     totalSize += sizes[pI][patchIndex];
                 }
+
+                sizeBeforeMapping_ = totalSize;
             }
         }
-
-        sizeBeforeMapping_ = totalSize;
     }
 
     // Check for the possibility of direct mapping
