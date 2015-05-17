@@ -75,7 +75,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
     Mesh_(mesh),
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     arraysInitialized_(false),
-    nPoints_(mesh.nPoints()),
+    nPoints_(0),
     nCells_(0),
     decompType_(-1),
     nDecompPoints_(0),
@@ -87,18 +87,6 @@ mesquiteMotionSolver::mesquiteMotionSolver
     nSweeps_(1),
     surfInterval_(1),
     relax_(1.0),
-    refPoints_
-    (
-        IOobject
-        (
-            "refPoints",
-            mesh.time().timeName(),
-            mesh,
-            IOobject::READ_IF_PRESENT,
-            IOobject::AUTO_WRITE
-        ),
-        mesh.points()
-    ),
     fvpDict_(0),
     basePoints_(0),
     boundaryConditions_(0),
@@ -125,7 +113,7 @@ mesquiteMotionSolver::mesquiteMotionSolver
     Mesh_(mesh),
     twoDMesh_(mesh.nGeometricD() == 2 ? true : false),
     arraysInitialized_(false),
-    nPoints_(mesh.nPoints()),
+    nPoints_(0),
     nCells_(0),
     decompType_(-1),
     nDecompPoints_(0),
@@ -137,18 +125,6 @@ mesquiteMotionSolver::mesquiteMotionSolver
     nSweeps_(1),
     surfInterval_(1),
     relax_(1.0),
-    refPoints_
-    (
-        IOobject
-        (
-            "refPoints",
-            mesh.time().timeName(),
-            mesh,
-            IOobject::READ_IF_PRESENT,
-            IOobject::AUTO_WRITE
-        ),
-        mesh.points()
-    ),
     fvpDict_(0),
     basePoints_(0),
     boundaryConditions_(0),
@@ -1298,6 +1274,10 @@ void mesquiteMotionSolver::initArrays()
 {
     const polyBoundaryMesh& boundary = mesh().boundaryMesh();
 
+    // Initialize refPoints
+    nPoints_ = mesh().nPoints();
+    refPoints_ = mesh().points();
+
     if (surfaceSmoothing_)
     {
         const label nEdges = mesh().nEdges();
@@ -1383,7 +1363,6 @@ void mesquiteMotionSolver::initArrays()
             }
         }
 
-        // Prepare the boundary condition vectorField
         origPoints_.setSize(nPoints, vector::zero);
     }
 
@@ -2563,6 +2542,32 @@ void mesquiteMotionSolver::initMesquiteParallelArrays()
 
                 edgeMarker_[eIndex] = 0.0;
             }
+        }
+    }
+
+    // Synchronize fixed surface boundary points
+    const vector cTol(0.5, 0.5, 0.5);
+    const label nPoints = mesh().nPoints();
+
+    vectorField bdyMarker(nPoints, vector::zero);
+
+    forAll(bdyMarker, pointI)
+    {
+        const vector& bdyV = bdy_[pointI];
+
+        if (bdyV < cTol)
+        {
+            bdyMarker[pointI] = vector::one;
+        }
+    }
+
+    transferBuffers(bdyMarker);
+
+    forAll(bdyMarker, pointI)
+    {
+        if (bdyMarker[pointI] > cTol)
+        {
+            bdy_[pointI] = vector::zero;
         }
     }
 }
@@ -5186,7 +5191,7 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
         edgeConstant_.clear();
     }
 
-    nPoints_ = Mesh_.nPoints();
+    nPoints_ = 0;
     nCells_ = 0;
     nDecompPoints_ = 0;
 
@@ -5198,7 +5203,6 @@ void mesquiteMotionSolver::update(const mapPolyMesh& mpm)
 
     // Reset refPoints
     refPoints_.clear();
-    refPoints_ = Mesh_.points();
 
     // Boundary conditions will be mapped automatically
     // via the mesh registry

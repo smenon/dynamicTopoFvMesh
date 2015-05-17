@@ -149,7 +149,7 @@ class mesquiteMotionSolver
         mutable labelList cellOffset_;
 
         //- Reference points
-        mutable pointIOField refPoints_;
+        mutable pointField refPoints_;
 
         //- Original points prior to surface-smoothing
         mutable pointField origPoints_;
