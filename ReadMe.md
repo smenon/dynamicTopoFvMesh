@@ -2,7 +2,7 @@
 An implementation of parallel, adaptive, simplical remeshing for OpenFOAM.
 
 ## Copyright Information
-    Copyright (C) 2007-2014
+    Copyright (C) 2007-2015
     Sandeep Menon
     University of Massachusetts Amherst.
 
@@ -50,4 +50,3 @@ To compile with the OpenFOAM-2.3.x release, switch to the Port-2.3.x branch.
 ## Disclaimer
 This offering is not approved or endorsed by ESI or OpenCFD Ltd, the producer of the OpenFOAM software and owner of the OpenFOAM and OpenCFD trade marks.
 
-[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/5760a35830bafd3e1ad3b93b46d33f15 "githalytics.com")](http://githalytics.com/smenon/dynamicTopoFvMesh)

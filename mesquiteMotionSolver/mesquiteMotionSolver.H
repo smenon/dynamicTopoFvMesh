@@ -43,24 +43,11 @@ SourceFiles
 #include "Switch.H"
 #include "edgeList.H"
 #include "labelPair.H"
-#include "pointIOField.H"
+#include "pointFields.H"
 #include "MeshObject.H"
 #include "HashSet.H"
 
-// Have gcc ignore certain warnings while including mesquite headers
-#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
-#   pragma GCC diagnostic ignored "-Wold-style-cast"
-#   pragma GCC diagnostic ignored "-Wnon-virtual-dtor"
-#   pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#endif
-
-#include "Mesquite_all_headers.hpp"
-
-#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
-#   pragma GCC diagnostic warning "-Wold-style-cast"
-#   pragma GCC diagnostic warning "-Wnon-virtual-dtor"
-#   pragma GCC diagnostic warning "-Wunused-but-set-variable"
-#endif
+#include "mesquiteHeaders.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
@@ -150,11 +137,26 @@ class mesquiteMotionSolver
         //- Array with element types
         mutable List<Mesquite::EntityTopology> mixedTypes_;
 
+        //- Demand-driven pointCells addressing
+        mutable labelListList pointCells_;
+
+        //- Demand-driven cell offset addressing
+        mutable labelList cellOffset_;
+
         //- Reference points
-        mutable pointIOField refPoints_;
+        mutable pointField refPoints_;
 
         //- Original points prior to surface-smoothing
         mutable pointField origPoints_;
+
+        //- Dictionary for fixedValue patches
+        mutable autoPtr<IOdictionary> fvpDict_;
+
+        //- Base points for pointDisplacement boundary conditions
+        mutable autoPtr<pointVectorField> basePoints_;
+
+        //- Boundary conditions
+        mutable autoPtr<pointVectorField> boundaryConditions_;
 
         //- Quality metric list
         wordList qMetrics_;
@@ -174,22 +176,18 @@ class mesquiteMotionSolver
 
         //- Data specific to Laplacian surface smoothing
         labelList pIDs_;
-        labelList offsets_;
+        vectorField bdy_;
+        vectorField gradEdge_;
+        scalarField edgeMarker_;
+        scalarField pointMarker_;
+        scalarField edgeConstant_;
         List<vectorField> pNormals_;
-        List<vectorField> gradEdge_;
-        List<vectorField> localPts_;
-        List<scalarField> edgeMarker_;
-        List<scalarField> edgeConstant_;
 
         //- Data for the auxiliary entities
         labelList procIndices_;
         scalarField pointFractions_;
         labelListList procPointLabels_;
         List<List<labelPair> > globalProcPoints_;
-
-        List<Map<label> > unmatchedRecvPoints_;
-        List<vectorField> sendSurfFields_, recvSurfFields_;
-        List<Map<label> > sendSurfPointMap_, recvSurfPointMap_;
 
         List<Map<label> > sendPointMap_, recvPointMap_;
         List<labelList> sendCellToNode_, recvCellToNode_;
@@ -198,15 +196,7 @@ class mesquiteMotionSolver
         //- Explicit patch coupling for surface smoothing
         Map<label> patchCoupling_;
 
-        // Fields for the CG solver
-        vectorField bV_;
-        vectorField xV_;
-        vectorField pV_;
-        vectorField rV_;
-        vectorField wV_;
-        vectorField bdy_;
-        scalarField pointMarker_;
-
+        //- Old domain volume
         scalar oldVolume_;
 
     // Private Member Functions
@@ -239,8 +229,11 @@ class mesquiteMotionSolver
         // Component-wise sumMag
         scalar cmptSumMag(const vectorField& field);
 
+        // Enumerants for transfer types
+        enum TransferType { CORRECT, FIX, PATCH };
+
         // Transfer buffers for surface point fields
-        void transferBuffers(vectorField &field, bool fix = false);
+        void transferBuffers(vectorField& field, TransferType type = CORRECT);
 
         // Apply boundary conditions
         void applyBCs(vectorField &field);
@@ -268,11 +261,38 @@ class mesquiteMotionSolver
         // Identify coupled patches
         void identifyCoupledPatches();
 
-        // Prepare for parallel surface smoothing
-        void initParallelSurfaceSmoothing();
-
         // Prepare mesquite connectivity for parallel runs
         void initMesquiteParallelArrays();
+
+        // Prepare flags for boundary layer zones
+        void initBoundaryLayerZones();
+
+        // Prepare flags for fixed zones
+        void initFixedZones();
+
+        // Fix triple-points for surface smoothing
+        void fixTriplePoints();
+
+        // Fix decomposed centroids
+        void fixDecomposedCentroids();
+
+        // Compute and return cell typeMap
+        labelList cellTypeMap() const;
+
+        // Initialize pointCells addressing
+        void initPointCells() const;
+
+        // Compute and return pointCells addressing
+        const labelListList& pointCells() const;
+
+        // Compute and return cellOffset addressing
+        const labelList& cellOffset() const;
+
+        // Clear demand-driven addressing
+        void clearDemandDrivenAddressing();
+
+        // Dump current mesh for debugging
+        void writeDecomposition() const;
 
         // Compute centroids based on up-to-date point positions
         void computeCentroids
@@ -282,6 +302,9 @@ class mesquiteMotionSolver
             pointField& cellCentres
         );
 
+        // Apply centroid positions
+        void applyCentroids();
+
         // Copy auxiliary points to/from buffers
         void copyAuxiliaryPoints(bool firstCopy);
 
@@ -290,6 +313,9 @@ class mesquiteMotionSolver
 
         // Apply fixed-value boundary conditions, if any.
         void applyFixedValuePatches();
+
+        // Apply boundary layer displacement
+        void applyBoundaryLayerPatches(pointField& displacement);
 
         // Private member function to perform Laplacian surface smoothing
         void smoothSurfaces();
